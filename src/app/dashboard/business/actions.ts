@@ -45,7 +45,7 @@ const configSchema = z.object({
   policies: z.string().max(4000).optional().default(""),
   languages: z.array(z.string().trim().min(1).max(16)).max(20).default(["en"]),
   systemPromptOverride: z.string().max(8000).optional().default(""),
-  llmProvider: z.enum(["anthropic", "openai"]),
+  llmProvider: z.enum(["gemini", "anthropic", "openai"]),
   llmModel: z.string().trim().max(120).optional().default(""),
   autoReplyEnabled: z.boolean(),
 });

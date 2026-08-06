@@ -2,6 +2,7 @@ import type { businessConfig } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import type { LlmProvider } from "../provider";
 import { AnthropicProvider } from "./anthropic";
+import { GeminiProvider } from "./gemini";
 
 type BusinessConfig = typeof businessConfig.$inferSelect;
 
@@ -20,6 +21,8 @@ export function getProvider(
   const model = config.llmModel ?? undefined;
 
   switch (provider) {
+    case "gemini":
+      return new GeminiProvider({ model });
     case "anthropic":
       return new AnthropicProvider({ model });
     case "openai":

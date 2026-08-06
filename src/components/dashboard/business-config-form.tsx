@@ -412,6 +412,7 @@ export function BusinessConfigForm({ initial }: { initial: BusinessConfigInitial
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="gemini">Google (Gemini)</SelectItem>
                   <SelectItem value="anthropic">Anthropic (Claude)</SelectItem>
                   <SelectItem value="openai">OpenAI</SelectItem>
                 </SelectContent>
@@ -423,7 +424,7 @@ export function BusinessConfigForm({ initial }: { initial: BusinessConfigInitial
                 id="llmModel"
                 value={llmModel}
                 onChange={(e) => setLlmModel(e.target.value)}
-                placeholder="claude-opus-4-8"
+                placeholder="gemini-flash-latest"
               />
             </div>
           </div>

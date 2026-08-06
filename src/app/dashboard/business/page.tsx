@@ -30,7 +30,7 @@ export default async function BusinessPage() {
     policies: config?.policies ?? "",
     languages: config?.languages ?? ["en"],
     systemPromptOverride: config?.systemPromptOverride ?? "",
-    llmProvider: config?.llmProvider ?? "anthropic",
+    llmProvider: config?.llmProvider ?? "gemini",
     llmModel: config?.llmModel ?? "",
     autoReplyEnabled: config?.autoReplyEnabled ?? true,
   };

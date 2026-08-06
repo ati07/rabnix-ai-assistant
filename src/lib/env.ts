@@ -14,7 +14,11 @@ const serverSchema = z.object({
 
   CLERK_SECRET_KEY: z.string().min(1).optional(),
 
-  DEFAULT_LLM_PROVIDER: z.enum(["anthropic", "openai"]).default("anthropic"),
+  DEFAULT_LLM_PROVIDER: z
+    .enum(["gemini", "anthropic", "openai"])
+    .default("gemini"),
+  GEMINI_API_KEY: z.string().optional(),
+  GEMINI_MODEL: z.string().default("gemini-flash-latest"),
   ANTHROPIC_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
 

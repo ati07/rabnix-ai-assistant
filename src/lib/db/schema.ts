@@ -69,7 +69,11 @@ export const documentStatusEnum = pgEnum("document_status", [
   "error",
 ]);
 
-export const llmProviderEnum = pgEnum("llm_provider", ["anthropic", "openai"]);
+export const llmProviderEnum = pgEnum("llm_provider", [
+  "gemini",
+  "anthropic",
+  "openai",
+]);
 
 export const staffRoleEnum = pgEnum("staff_role", ["owner", "staff"]);
 
@@ -157,7 +161,7 @@ export const businessConfig = pgTable(
     /** Optional full override of the generated system prompt. */
     systemPromptOverride: text("system_prompt_override"),
     /** Which LLM this tenant uses. */
-    llmProvider: llmProviderEnum("llm_provider").notNull().default("anthropic"),
+    llmProvider: llmProviderEnum("llm_provider").notNull().default("gemini"),
     llmModel: text("llm_model"),
     /** Turn the AI auto-reply on/off without disconnecting WhatsApp. */
     autoReplyEnabled: boolean("auto_reply_enabled").notNull().default(true),
