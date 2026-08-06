@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Bell,
   Building2,
   BookOpen,
   LayoutDashboard,
   MessagesSquare,
   Smartphone,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +18,8 @@ const links = [
   { href: "/dashboard/business", label: "Business", icon: Building2 },
   { href: "/dashboard/knowledge", label: "Knowledge", icon: BookOpen },
   { href: "/dashboard/conversations", label: "Conversations", icon: MessagesSquare },
+  { href: "/dashboard/notifications", label: "Notifications", icon: Bell },
+  { href: "/dashboard/staff", label: "Team", icon: Users },
   { href: "/dashboard/whatsapp", label: "WhatsApp", icon: Smartphone },
 ];
 
