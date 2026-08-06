@@ -99,6 +99,24 @@ export function formatInZone(date: Date, timeZone: string): string {
   }
 }
 
+/**
+ * The calendar day (`YYYY-MM-DD`) for a UTC instant, as seen in `timeZone`.
+ * `en-CA` formats as ISO date, so it lines up with a `to_char(..., 'YYYY-MM-DD')`
+ * bucket computed in the same zone by Postgres.
+ */
+export function dateKeyInZone(date: Date, timeZone: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+  } catch {
+    return date.toISOString().slice(0, 10);
+  }
+}
+
 /** Parse "HH:MM" into minutes-since-midnight. Returns null when malformed. */
 export function parseHhMm(value: string): number | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
