@@ -24,6 +24,13 @@ const serverSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().optional(),
 
+  // Official WhatsApp Cloud API. ENCRYPTION_KEY (any strong secret) is required
+  // to store tenant access tokens at rest — encryption fails loudly without it.
+  // META_APP_SECRET, if set, verifies inbound webhook signatures.
+  ENCRYPTION_KEY: z.string().optional(),
+  META_APP_SECRET: z.string().optional(),
+  WHATSAPP_API_VERSION: z.string().default("v21.0"),
+
   // ITERATION 1: knowledge retrieval uses Postgres full-text search — no
   // embeddings provider is needed. Reintroduce EMBEDDING_*/GEMINI_API_KEY when
   // semantic vector search is added back.

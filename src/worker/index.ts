@@ -11,6 +11,10 @@ import {
 } from "@/lib/scheduling/reminders";
 import { isEmailConfigured, sendEmail } from "@/lib/email";
 import { BaileysChannel } from "@/lib/whatsapp/baileys-channel";
+import {
+  getCloudConnection,
+  sendCloudApiToTenant,
+} from "@/lib/whatsapp/cloud-api";
 import type { Tenant } from "@/lib/tenant";
 
 /**
@@ -33,8 +37,13 @@ const channels = new Map<string, BaileysChannel>();
 /** Deliver a reminder/notification over the tenant's live WhatsApp socket. */
 const sendViaChannel: WhatsAppSender = async (tenantId, to, message) => {
   const channel = channels.get(tenantId);
-  if (!channel) throw new Error(`no active channel for tenant ${tenantId}`);
-  await channel.sendText(to, message);
+  if (channel) {
+    await channel.sendText(to, message);
+    return;
+  }
+  // Cloud API tenants have no live socket here — send statelessly via Graph.
+  // Throws if the tenant has neither transport, so the reminder retries.
+  await sendCloudApiToTenant(tenantId, to, message);
 };
 
 /** Deliver an email reminder via Resend. Undefined when unconfigured. */
@@ -85,12 +94,14 @@ async function main() {
 async function syncTenants() {
   const rows = await db.select().from(tenants);
   for (const tenant of rows) {
-    if (!channels.has(tenant.id)) {
-      try {
-        await startTenant(tenant);
-      } catch (err) {
-        console.error(`[worker] failed to start tenant ${tenant.slug}:`, err);
-      }
+    if (channels.has(tenant.id)) continue;
+    // Cloud API tenants are webhook-driven — they need no Baileys socket/QR.
+    const cloud = await getCloudConnection(tenant.id);
+    if (cloud?.cloudApiConfig) continue;
+    try {
+      await startTenant(tenant);
+    } catch (err) {
+      console.error(`[worker] failed to start tenant ${tenant.slug}:`, err);
     }
   }
 }
