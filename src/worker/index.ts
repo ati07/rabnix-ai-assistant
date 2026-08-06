@@ -6,8 +6,10 @@ import { tenants, whatsappConnections } from "@/lib/db/schema";
 import { handleIncomingMessage } from "@/lib/ai/brain";
 import {
   dispatchDueReminders,
+  type EmailSender,
   type WhatsAppSender,
 } from "@/lib/scheduling/reminders";
+import { isEmailConfigured, sendEmail } from "@/lib/email";
 import { BaileysChannel } from "@/lib/whatsapp/baileys-channel";
 import type { Tenant } from "@/lib/tenant";
 
@@ -35,6 +37,11 @@ const sendViaChannel: WhatsAppSender = async (tenantId, to, message) => {
   await channel.sendText(to, message);
 };
 
+/** Deliver an email reminder via Resend. Undefined when unconfigured. */
+const sendViaEmail: EmailSender | undefined = isEmailConfigured()
+  ? ({ to, subject, message }) => sendEmail({ to, subject, text: message })
+  : undefined;
+
 async function main() {
   console.log("[worker] starting WhatsApp worker…");
 
@@ -43,8 +50,12 @@ async function main() {
     void syncTenants();
   }, POLL_INTERVAL_MS);
 
+  console.log(
+    `[worker] email delivery: ${sendViaEmail ? "enabled (Resend)" : "disabled — set RESEND_API_KEY + EMAIL_FROM"}`,
+  );
+
   const reminderTimer = setInterval(() => {
-    void dispatchDueReminders(sendViaChannel)
+    void dispatchDueReminders(sendViaChannel, sendViaEmail)
       .then((r) => {
         if (r.sent || r.failed) {
           console.log(

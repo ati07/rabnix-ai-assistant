@@ -18,6 +18,12 @@ const serverSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
 
+  // Transactional email (Resend). Both required to enable email delivery;
+  // when unset, email reminders are marked failed with a clear reason.
+  // EMAIL_FROM must be a verified sender, e.g. "Rabnix <hello@yourdomain.com>".
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().optional(),
+
   // ITERATION 1: knowledge retrieval uses Postgres full-text search — no
   // embeddings provider is needed. Reintroduce EMBEDDING_*/GEMINI_API_KEY when
   // semantic vector search is added back.
