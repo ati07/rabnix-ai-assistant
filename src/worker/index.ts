@@ -4,6 +4,10 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tenants, whatsappConnections } from "@/lib/db/schema";
 import { handleIncomingMessage } from "@/lib/ai/brain";
+import {
+  dispatchDueReminders,
+  type WhatsAppSender,
+} from "@/lib/scheduling/reminders";
 import { BaileysChannel } from "@/lib/whatsapp/baileys-channel";
 import type { Tenant } from "@/lib/tenant";
 
@@ -19,9 +23,17 @@ import type { Tenant } from "@/lib/tenant";
  */
 
 const POLL_INTERVAL_MS = 30_000;
+const REMINDER_POLL_MS = 15_000;
 
 /** tenantId → running channel. */
 const channels = new Map<string, BaileysChannel>();
+
+/** Deliver a reminder/notification over the tenant's live WhatsApp socket. */
+const sendViaChannel: WhatsAppSender = async (tenantId, to, message) => {
+  const channel = channels.get(tenantId);
+  if (!channel) throw new Error(`no active channel for tenant ${tenantId}`);
+  await channel.sendText(to, message);
+};
 
 async function main() {
   console.log("[worker] starting WhatsApp worker…");
@@ -31,9 +43,22 @@ async function main() {
     void syncTenants();
   }, POLL_INTERVAL_MS);
 
+  const reminderTimer = setInterval(() => {
+    void dispatchDueReminders(sendViaChannel)
+      .then((r) => {
+        if (r.sent || r.failed) {
+          console.log(
+            `[scheduler] sent=${r.sent} failed=${r.failed} skipped=${r.skipped}`,
+          );
+        }
+      })
+      .catch((err) => console.error("[scheduler] tick failed:", err));
+  }, REMINDER_POLL_MS);
+
   const shutdown = async () => {
     console.log("\n[worker] shutting down…");
     clearInterval(timer);
+    clearInterval(reminderTimer);
     await Promise.all([...channels.values()].map((c) => c.stop()));
     process.exit(0);
   };

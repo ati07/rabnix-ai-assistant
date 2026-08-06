@@ -7,15 +7,10 @@ import {
   type channelTypeEnum,
 } from "@/lib/db/schema";
 import type { Tenant } from "@/lib/tenant";
+import { makeToolExecutor } from "./actions";
 import { buildSystemPrompt } from "./prompt";
 import { getProvider } from "./providers";
-import type {
-  LlmMessage,
-  LlmToolResult,
-  ToolExecutor,
-  ToolInvocation,
-} from "./provider";
-import { searchKnowledge } from "./rag";
+import type { LlmMessage, ToolInvocation } from "./provider";
 import { tools } from "./tools";
 
 type ChannelType = (typeof channelTypeEnum.enumValues)[number];
@@ -99,6 +94,8 @@ export async function handleIncomingMessage(
     tenantId: tenant.id,
     conversationId: conversation.id,
     customerId: incoming.from,
+    customerName: incoming.customerName ?? conversation.customerName,
+    config,
   });
 
   const result = await provider.run(
@@ -168,51 +165,4 @@ async function loadHistory(conversationId: string): Promise<LlmMessage[]> {
     .reverse()
     .filter((m) => m.role === "user" || m.role === "assistant")
     .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
-}
-
-/**
- * Build the tool executor for one conversation.
- *
- * STUBBED for Phase 2 — every tool returns a structured "not available yet"
- * result so the loop terminates gracefully. Phases 3–4 replace these with real
- * implementations (RAG search, CRM, availability/booking, notifications,
- * reminders, human handoff) using the captured `tenantId`/`conversationId`.
- */
-function makeToolExecutor(ctx: {
-  tenantId: string;
-  conversationId: string;
-  customerId: string;
-}): ToolExecutor {
-  return async (call: ToolInvocation): Promise<LlmToolResult> => {
-    switch (call.name) {
-      case "search_knowledge": {
-        const query = String(call.input.query ?? "").trim();
-        if (!query) return { content: "No search query was provided." };
-        const results = await searchKnowledge(ctx.tenantId, query, { limit: 5 });
-        if (results.length === 0) {
-          return {
-            content:
-              "No relevant information found in the knowledge base. Answer from your configured information, or offer to connect a human.",
-          };
-        }
-        return {
-          content: results
-            .map((r, i) => `[${i + 1}] ${r.content}`)
-            .join("\n\n"),
-        };
-      }
-      case "get_customer":
-        return { content: JSON.stringify({ found: false }) };
-      case "check_availability":
-        return {
-          content:
-            "The booking calendar is not connected yet. Tell the customer a team member will confirm a time.",
-        };
-      default:
-        return {
-          content: `The "${call.name}" action is not available yet in this environment.`,
-          isError: true,
-        };
-    }
-  };
 }
