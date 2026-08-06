@@ -119,7 +119,10 @@ export default async function AnalyticsPage({
       .select({ day: dayExpr, direction: messages.direction, n: count() })
       .from(messages)
       .where(msgWindow)
-      .groupBy(dayExpr, messages.direction),
+      // Group by output-column ordinals (day, direction): Drizzle renders the
+      // day expression unqualified in SELECT but qualified in GROUP BY, so
+      // repeating it there trips Postgres' expression matching (42803).
+      .groupBy(sql`1`, sql`2`),
     db
       .select({ channel: conversations.channelType, n: count() })
       .from(conversations)
