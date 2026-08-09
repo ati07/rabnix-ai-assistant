@@ -11,10 +11,11 @@ type Status = "open" | "needs_human" | "human" | "closed";
 
 /**
  * Staff-side controls for a conversation: take over from the AI (which pauses
- * auto-reply), reply directly to the customer, and hand back to the AI. While a
- * human is engaged, the thread is polled so incoming messages appear without a
- * manual refresh. Works for every channel: web replies reach the visitor through
- * the widget, WhatsApp replies are delivered by the worker.
+ * auto-reply), reply directly to the customer, and hand back to the AI. The
+ * thread is polled while the conversation is active (AI- or human-handled) so
+ * incoming and AI messages appear without a manual refresh. Works for every
+ * channel: web replies reach the visitor through the widget, WhatsApp replies
+ * are delivered by the worker.
  */
 export function ConversationReply({
   conversationId,
@@ -33,10 +34,12 @@ export function ConversationReply({
   const humanHandling = status === "human";
   const channelLabel = isWeb ? "the visitor" : "the customer on WhatsApp";
 
-  // While a human is engaged (or a handoff is pending), refresh to surface new
-  // visitor messages. `router.refresh` is stable across renders.
+  // Keep the thread live so new messages appear without a manual refresh —
+  // whether the AI is auto-replying or a human has taken over. We poll for any
+  // active conversation and only stop once it's closed. `router.refresh` re-runs
+  // the server component (re-querying the thread) and is stable across renders.
   useEffect(() => {
-    if (status !== "human" && status !== "needs_human") return;
+    if (status === "closed") return;
     const t = setInterval(() => router.refresh(), 5000);
     return () => clearInterval(t);
   }, [status, router]);

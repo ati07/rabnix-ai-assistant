@@ -58,6 +58,7 @@ export function ChatWindow({
       try {
         const res = await fetch(
           `/api/chat/${chatKey}/history?sessionId=${encodeURIComponent(sessionIdRef.current)}`,
+          { cache: "no-store" },
         );
         if (res.ok) {
           const data: { messages: ChatMessage[] } = await res.json();
@@ -91,6 +92,7 @@ export function ChatWindow({
       try {
         const res = await fetch(
           `/api/chat/${chatKey}/history?sessionId=${encodeURIComponent(sessionIdRef.current)}`,
+          { cache: "no-store" },
         );
         if (!res.ok) return;
         const data: { messages: ChatMessage[] } = await res.json();

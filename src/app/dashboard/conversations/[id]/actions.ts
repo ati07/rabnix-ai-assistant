@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { conversations, messages, reminders } from "@/lib/db/schema";
 import { requireTenant } from "@/lib/tenant";
+import { sendCloudApiToTenant } from "@/lib/whatsapp/cloud-api";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -24,15 +25,18 @@ async function ownConversation(tenantId: string, conversationId: string) {
  * Deliver a staff/system message to the customer on their channel.
  *
  * - `web`: nothing to push — the widget shows it on its next `/history` poll.
- * - `baileys` / `cloud_api`: outbound WhatsApp lives in the worker, so we enqueue
- *   an immediate {@link reminders} row the scheduler drains. That reuses the
- *   worker's dual-transport sender (live Baileys socket or stateless Graph call)
- *   and its retry behaviour, and keeps outbound WhatsApp out of the web request
- *   path — the same pattern the AI's tools use.
+ * - `cloud_api`: outbound is a stateless Graph call, so we send it directly from
+ *   the request path — the same way the webhook sends the AI's own replies. This
+ *   is deliberately NOT routed through the worker: a Cloud API tenant needs no
+ *   worker for anything else, and requiring one just to deliver a handover reply
+ *   silently drops it when the worker isn't running.
+ * - `baileys`: needs the live socket held by the worker process, so we enqueue an
+ *   immediate {@link reminders} row the scheduler drains. A failed `cloud_api`
+ *   send also falls back to the queue for durable retry.
  *
  * Note: Cloud API only allows free-form text within 24h of the customer's last
- * message; a reply outside that window fails at the Graph call and the reminder
- * retries. Staff replying to a live handoff are well inside the window.
+ * message; a reply outside that window fails at the Graph call. Staff replying to
+ * a live handoff are well inside the window.
  */
 async function deliverToCustomer(
   tenantId: string,
@@ -40,6 +44,22 @@ async function deliverToCustomer(
   message: string,
 ): Promise<void> {
   if (conversation.channelType === "web") return;
+
+  if (conversation.channelType === "cloud_api") {
+    try {
+      await sendCloudApiToTenant(tenantId, conversation.customerId, message);
+      return;
+    } catch (err) {
+      // Fall through to the queue so a running worker can retry, rather than
+      // losing the message outright.
+      console.error(
+        "[handover] direct Cloud API send failed, queuing for retry:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  // Baileys (worker-only live socket), or a Cloud API send that just failed.
   await db.insert(reminders).values({
     tenantId,
     target: "customer",

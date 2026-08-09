@@ -4,9 +4,15 @@ import { conversations, messages } from "@/lib/db/schema";
 import { findByPublicKey } from "@/lib/chat/web-config";
 
 export const runtime = "nodejs";
+// The widget polls this every few seconds; never let a browser/CDN serve a stale
+// cached copy or staff replies won't appear live.
+export const dynamic = "force-dynamic";
 
 /** How many past messages to restore into the widget on reload. */
 const HISTORY_LIMIT = 50;
+
+/** No-store so each poll reflects the latest thread. */
+const NO_STORE = { headers: { "cache-control": "no-store" } } as const;
 
 /**
  * Public: restore a returning visitor's thread.
@@ -25,7 +31,7 @@ export async function GET(
 
   const config = await findByPublicKey(key);
   if (!config || !config.enabled || !sessionId) {
-    return Response.json({ messages: [] });
+    return Response.json({ messages: [] }, NO_STORE);
   }
 
   const conversation = await db.query.conversations.findFirst({
@@ -36,7 +42,7 @@ export async function GET(
     ),
   });
   if (!conversation) {
-    return Response.json({ messages: [] });
+    return Response.json({ messages: [] }, NO_STORE);
   }
 
   const rows = await db
@@ -51,12 +57,15 @@ export async function GET(
     .orderBy(asc(messages.createdAt))
     .limit(HISTORY_LIMIT);
 
-  return Response.json({
-    messages: rows.map((m) => ({
-      id: m.id,
-      role: m.direction === "outbound" ? "assistant" : "user",
-      content: m.content,
-      createdAt: m.createdAt,
-    })),
-  });
+  return Response.json(
+    {
+      messages: rows.map((m) => ({
+        id: m.id,
+        role: m.direction === "outbound" ? "assistant" : "user",
+        content: m.content,
+        createdAt: m.createdAt,
+      })),
+    },
+    NO_STORE,
+  );
 }
