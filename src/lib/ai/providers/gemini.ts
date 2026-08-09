@@ -41,7 +41,6 @@ export const MODEL_FALLBACK_CHAIN = [
   "gemini-3-flash-preview",
   "gemini-3.6-flash",
   "gemini-3.5-flash",
-  "gemini-2.5-flash",
   "gemini-3.5-flash-lite",
   "gemini-3.1-flash-lite",
 ] as const;
@@ -88,6 +87,27 @@ function classifyQuotaError(err: unknown): {
   const m = blob.match(/"retryDelay":\s*"(\d+(?:\.\d+)?)s"/);
   const retryMs = m ? Math.ceil(parseFloat(m[1]) * 1000) : 0;
   return { isQuota, daily, retryMs };
+}
+
+/** Whether an error means the model itself is gone — retired, or not available
+ * to this account (Gemini 404 `NOT_FOUND`). This is permanent, unlike a quota
+ * hit, so we skip the model for a long window and rotate rather than failing the
+ * whole request. Guards against a retired model in the chain aborting rotation
+ * before the higher-quota tiers below it are ever tried. */
+function isModelUnavailable(err: unknown): boolean {
+  const status =
+    (err as { status?: number; code?: number })?.status ??
+    (err as { code?: number })?.code;
+  const blob = (() => {
+    try {
+      return typeof err === "string" ? err : JSON.stringify(err);
+    } catch {
+      return String((err as { message?: string })?.message ?? err);
+    }
+  })();
+  return (
+    status === 404 || /NOT_FOUND|no longer available|is not found/i.test(blob)
+  );
 }
 
 /** Milliseconds until the next Pacific midnight, when free-tier daily quotas
@@ -269,6 +289,16 @@ export class GeminiProvider implements LlmProvider {
         this.activeModel = model;
         return response;
       } catch (err) {
+        // A retired/unavailable model is permanent — sit it out for a day and
+        // keep rotating, so it never aborts the chain before the tiers below it.
+        if (isModelUnavailable(err)) {
+          coolDown(model, 24 * 60 * 60 * 1000);
+          console.warn(
+            `[gemini] "${model}" is unavailable (404); skipping for 24h and rotating`,
+          );
+          lastErr = err;
+          continue;
+        }
         const { isQuota, daily, retryMs } = classifyQuotaError(err);
         if (!isQuota) throw err;
         const cooldown = daily
