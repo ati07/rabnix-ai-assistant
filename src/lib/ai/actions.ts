@@ -28,9 +28,11 @@ type BusinessConfig = typeof businessConfig.$inferSelect;
 export interface ToolContext {
   tenantId: string;
   conversationId: string;
-  /** Customer's WhatsApp number / channel id (E.164). */
+  /** Customer's WhatsApp number / channel id (E.164, or web session id). */
   customerId: string;
   customerName?: string | null;
+  /** Which channel this conversation is on (drives reminder delivery). */
+  channel?: "baileys" | "cloud_api" | "web";
   /** The tenant's business config (timezone, services, hours). */
   config: BusinessConfig | null;
 }
@@ -319,6 +321,33 @@ async function doBookAppointment(
   const customer = await ensureCustomer(ctx);
   const staffRow = staffName ? await findStaff(ctx.tenantId, staffName) : null;
 
+  // Idempotency: a customer can't be in two places at once, so an existing
+  // non-cancelled appointment at the same start time IS this booking. Return it
+  // instead of inserting a duplicate row (and firing a duplicate notification)
+  // when the model calls book_appointment more than once.
+  const existing = await db.query.appointments.findFirst({
+    where: and(
+      eq(appointments.tenantId, ctx.tenantId),
+      eq(appointments.customerId, customer.id),
+      eq(appointments.startAt, startAt),
+      ne(appointments.status, "cancelled"),
+    ),
+  });
+  if (existing) {
+    const tz = config?.timezone || "UTC";
+    return {
+      content: JSON.stringify({
+        booked: true,
+        appointmentId: existing.id,
+        service: existing.serviceName,
+        when: formatInZone(existing.startAt, tz),
+        staff: staffRow?.name ?? null,
+        alreadyBooked: true,
+        note: "This appointment is already booked — do NOT book again. Just confirm it to the customer.",
+      }),
+    };
+  }
+
   try {
     const [appt] = await db
       .insert(appointments)
@@ -454,6 +483,39 @@ async function doScheduleReminder(
     return { content: "That time is in the past — pick a future time.", isError: true };
   }
 
+  const tz = ctx.config?.timezone || "UTC";
+
+  // Web visitors are anonymous — there's no WhatsApp number to reach them on, so
+  // reminders must go by email. Require an email on file before scheduling one.
+  if (ctx.channel === "web") {
+    const customer = await ensureCustomer(ctx);
+    const email = customer.email?.trim();
+    if (!email) {
+      return {
+        content:
+          "This is a website chat visitor with no email on file, so a reminder can't be delivered yet. Ask the customer for their email, save it with update_customer, then schedule the reminder. Do NOT tell them a reminder is set until then, and never say you'll remind them on WhatsApp.",
+      };
+    }
+
+    await db.insert(reminders).values({
+      tenantId: ctx.tenantId,
+      appointmentId: appointmentId ?? null,
+      target: "customer",
+      channel: "email",
+      sendAt,
+      payload: {
+        to: email,
+        subject: `Reminder from ${ctx.config?.displayName ?? "us"}`,
+        message,
+      },
+    });
+
+    return {
+      content: `Reminder scheduled by email to ${email} for ${formatInZone(sendAt, tz)}.`,
+    };
+  }
+
+  // WhatsApp channels: reach the customer at their number (the conversation id).
   await db.insert(reminders).values({
     tenantId: ctx.tenantId,
     appointmentId: appointmentId ?? null,
@@ -463,7 +525,6 @@ async function doScheduleReminder(
     payload: { to: ctx.customerId, message },
   });
 
-  const tz = ctx.config?.timezone || "UTC";
   return { content: `Reminder scheduled for ${formatInZone(sendAt, tz)}.` };
 }
 
@@ -479,16 +540,37 @@ async function doEscalate(
     .set({ status: "needs_human" })
     .where(eq(conversations.id, ctx.conversationId));
 
+  // Web visitors are anonymous — a team member can reply live in the chat while
+  // the visitor is on the page, but once they leave there's no way to reach them
+  // unless we captured an email. Surface whatever contact we have to staff.
+  let contactLine = "";
+  let webEmail: string | undefined;
+  if (ctx.channel === "web") {
+    const customer = await ensureCustomer(ctx);
+    webEmail = customer.email?.trim() || undefined;
+    contactLine = webEmail
+      ? `\nFollow up by email: ${webEmail} (or reply live in the chat).`
+      : "\nNo email on file — reply live in the chat now, or ask them for an email to follow up later.";
+  }
+
   await notifyStaff(ctx.tenantId, {
     type: "handoff",
     title: "Conversation needs a human",
-    body: `${ctx.customerName ?? ctx.customerId}: ${reason}`,
-    meta: { conversationId: ctx.conversationId },
+    body: `${ctx.customerName ?? ctx.customerId}: ${reason}${contactLine}`,
+    meta: { conversationId: ctx.conversationId, channel: ctx.channel, email: webEmail ?? null },
   });
+
+  if (ctx.channel === "web" && !webEmail) {
+    return {
+      content:
+        "Escalated to the team. This is an anonymous website visitor, so ask for their email now (save it with update_customer) so the team can follow up if they leave the page — and tell them a team member will reply here in the chat shortly.",
+    };
+  }
 
   return {
     content:
-      "Escalated to the team. Tell the customer a team member will follow up shortly.",
+      "Escalated to the team. Tell the customer a team member will follow up shortly" +
+      (ctx.channel === "web" ? " — here in the chat, or by email." : "."),
   };
 }
 

@@ -78,6 +78,12 @@ export async function handleIncomingMessage(
 
   await touchConversation(conversation.id);
 
+  // A human agent has taken over (or the thread is closed): record the inbound
+  // message so staff see it, but the AI stays silent until it's handed back.
+  if (conversation.status === "human" || conversation.status === "closed") {
+    return { reply: null, conversationId: conversation.id, toolCalls: [] };
+  }
+
   // No config or auto-reply disabled → record the message, stay silent.
   if (!config || !config.autoReplyEnabled) {
     return { reply: null, conversationId: conversation.id, toolCalls: [] };
@@ -87,6 +93,7 @@ export async function handleIncomingMessage(
   const system = buildSystemPrompt(config, {
     customerId: incoming.from,
     customerName: incoming.customerName ?? conversation.customerName,
+    channel,
   });
 
   const provider = getProvider(config);
@@ -95,6 +102,7 @@ export async function handleIncomingMessage(
     conversationId: conversation.id,
     customerId: incoming.from,
     customerName: incoming.customerName ?? conversation.customerName,
+    channel,
     config,
   });
 
@@ -111,7 +119,10 @@ export async function handleIncomingMessage(
       direction: "outbound",
       role: "assistant",
       content: reply,
-      meta: { model: provider.model, toolCalls: result.toolCalls.map((c) => c.name) },
+      meta: {
+        model: provider.activeModel ?? provider.model,
+        toolCalls: result.toolCalls.map((c) => c.name),
+      },
     });
     await touchConversation(conversation.id);
   }

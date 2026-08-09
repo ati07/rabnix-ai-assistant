@@ -6,7 +6,9 @@ import { db } from "@/lib/db";
 import { conversations, messages } from "@/lib/db/schema";
 import { requireTenant } from "@/lib/tenant";
 import { cn } from "@/lib/utils";
+import { Card, CardContent } from "@/components/ui/card";
 import { ConversationStatusBadge } from "@/components/dashboard/conversation-status-badge";
+import { ConversationReply } from "@/components/dashboard/conversation-reply";
 
 export default async function ConversationDetailPage({
   params,
@@ -51,41 +53,49 @@ export default async function ConversationDetailPage({
         <ConversationStatusBadge status={conversation.status} />
       </div>
 
-      <div className="space-y-3">
-        {thread.length === 0 && (
-          <p className="text-center text-muted-foreground">No messages.</p>
-        )}
-        {thread.map((m) => {
-          const outbound = m.direction === "outbound";
-          return (
-            <div
-              key={m.id}
-              className={cn("flex", outbound ? "justify-end" : "justify-start")}
-            >
+      <Card className="min-h-0 flex-1">
+        <CardContent className="max-h-[70vh] space-y-3 overflow-y-auto py-4">
+          {thread.length === 0 && (
+            <p className="text-center text-muted-foreground">No messages.</p>
+          )}
+          {thread.map((m) => {
+            const outbound = m.direction === "outbound";
+            return (
               <div
-                className={cn(
-                  "max-w-[80%] rounded-2xl px-4 py-2 text-sm",
-                  outbound
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-foreground",
-                )}
+                key={m.id}
+                className={cn("flex", outbound ? "justify-end" : "justify-start")}
               >
-                <p className="whitespace-pre-wrap break-words">{m.content}</p>
-                <p
+                <div
                   className={cn(
-                    "mt-1 text-[10px]",
+                    "max-w-[80%] rounded-2xl px-4 py-2 text-sm",
                     outbound
-                      ? "text-primary-foreground/70"
-                      : "text-muted-foreground",
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-foreground",
                   )}
                 >
-                  {new Date(m.createdAt).toLocaleString()}
-                </p>
+                  <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                  <p
+                    className={cn(
+                      "mt-1 text-[10px]",
+                      outbound
+                        ? "text-primary-foreground/70"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {new Date(m.createdAt).toLocaleString()}
+                  </p>
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+
+      <ConversationReply
+        conversationId={conversation.id}
+        channel={conversation.channelType}
+        status={conversation.status}
+      />
     </div>
   );
 }

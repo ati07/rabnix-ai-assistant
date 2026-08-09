@@ -125,7 +125,7 @@ export const tools: LlmToolSpec[] = [
   {
     name: "schedule_reminder",
     description:
-      "Schedule a future WhatsApp reminder to the customer (e.g. an appointment reminder). Call this after booking, or whenever the customer asks to be reminded about something at a specific time.",
+      "Schedule a future reminder to the customer (e.g. an appointment reminder). It is delivered on the customer's channel — WhatsApp for WhatsApp chats, or email for website chats (which first requires their email saved via update_customer). Call this after booking, or whenever the customer asks to be reminded about something at a specific time.",
     inputSchema: {
       type: "object",
       properties: {

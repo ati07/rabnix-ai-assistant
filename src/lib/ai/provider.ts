@@ -98,5 +98,8 @@ export interface LlmRunResult {
 export interface LlmProvider {
   readonly name: string;
   readonly model: string;
+  /** The model that actually served the last request. Differs from `model` when
+   * the provider auto-rotated to a fallback (e.g. on quota exhaustion). */
+  readonly activeModel?: string;
   run(request: LlmRunRequest, executeTool: ToolExecutor): Promise<LlmRunResult>;
 }

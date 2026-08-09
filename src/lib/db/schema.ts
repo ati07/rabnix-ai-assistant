@@ -35,7 +35,11 @@ export const businessTypeEnum = pgEnum("business_type", [
   "other",
 ]);
 
-export const channelTypeEnum = pgEnum("channel_type", ["baileys", "cloud_api"]);
+export const channelTypeEnum = pgEnum("channel_type", [
+  "baileys",
+  "cloud_api",
+  "web",
+]);
 
 export const connectionStatusEnum = pgEnum("connection_status", [
   "disconnected",
@@ -48,6 +52,9 @@ export const connectionStatusEnum = pgEnum("connection_status", [
 export const conversationStatusEnum = pgEnum("conversation_status", [
   "open",
   "needs_human",
+  // A human agent has actively taken over this conversation — the AI stops
+  // auto-replying until it's handed back to "open".
+  "human",
   "closed",
 ]);
 
@@ -208,6 +215,38 @@ export type CloudApiConfig = {
   verifyToken: string;
   accessTokenCipher: string;
 };
+
+// ── Web chat widget (embeddable chatbot channel) ──────────────────────────
+// One row per tenant. The embeddable widget resolves the tenant by `publicKey`
+// (a rotatable, non-secret id used in the embed snippet and public /api/chat
+// routes) — never by tenantId, so internal ids don't leak into customer sites.
+export const webChatConfigs = pgTable(
+  "web_chat_configs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    /** Widget on/off. Off = public routes 404 so it can't be used. */
+    enabled: boolean("enabled").notNull().default(false),
+    /** Public, rotatable id used in the embed snippet + public routes. */
+    publicKey: text("public_key").notNull(),
+    /** First assistant bubble shown before the visitor types. */
+    greeting: text("greeting").notNull().default("Hi! How can I help you today?"),
+    /** Launcher/header accent colour (CSS hex). */
+    themeColor: text("theme_color").notNull().default("#4f46e5"),
+    /** Text on the launcher button. */
+    launcherLabel: text("launcher_label").notNull().default("Chat with us"),
+    /** Optional origin allow-list; empty = allow any embedding site. */
+    allowedOrigins: jsonb("allowed_origins").$type<string[]>().notNull().default([]),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("web_chat_configs_tenant_id_idx").on(t.tenantId),
+    uniqueIndex("web_chat_configs_public_key_idx").on(t.publicKey),
+  ],
+);
 
 // ── Documents + chunks (RAG) ─────────────────────────────────────────────
 export const documents = pgTable(

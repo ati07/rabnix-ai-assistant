@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   BarChart3,
   Bell,
+  Bot,
   Building2,
   BookOpen,
   Contact,
@@ -25,15 +26,24 @@ const links = [
   { href: "/dashboard/notifications", label: "Notifications", icon: Bell },
   { href: "/dashboard/staff", label: "Team", icon: Users },
   { href: "/dashboard/whatsapp", label: "WhatsApp", icon: Smartphone },
+  { href: "/dashboard/chatbot", label: "Web Chat", icon: Bot },
 ];
 
-export function DashboardNav() {
+export function DashboardNav({
+  unreadNotifications = 0,
+}: {
+  unreadNotifications?: number;
+}) {
   const pathname = usePathname();
 
   return (
     <nav className="flex flex-col gap-1 p-3">
       {links.map(({ href, label, icon: Icon, exact }) => {
         const active = exact ? pathname === href : pathname.startsWith(href);
+        const badge =
+          href === "/dashboard/notifications" && unreadNotifications > 0
+            ? unreadNotifications
+            : null;
         return (
           <Link
             key={href}
@@ -46,7 +56,12 @@ export function DashboardNav() {
             )}
           >
             <Icon className="size-4" />
-            {label}
+            <span className="flex-1">{label}</span>
+            {badge !== null && (
+              <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-xs font-semibold text-primary-foreground">
+                {badge > 99 ? "99+" : badge}
+              </span>
+            )}
           </Link>
         );
       })}

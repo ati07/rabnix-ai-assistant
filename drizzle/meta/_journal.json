@@ -15,6 +15,20 @@
       "when": 1786019273989,
       "tag": "0001_pink_the_liberteens",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786278529528,
+      "tag": "0002_overconfident_outlaw_kid",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786294177143,
+      "tag": "0003_dizzy_nekra",
+      "breakpoints": true
     }
   ]
 }

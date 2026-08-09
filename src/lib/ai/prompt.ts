@@ -20,6 +20,8 @@ export interface PromptContext {
   /** Customer WhatsApp number / channel id. */
   customerId: string;
   customerName?: string | null;
+  /** Which channel the conversation is on (drives reminder/contact guidance). */
+  channel?: "baileys" | "cloud_api" | "web";
   /** Retrieved knowledge-base chunks (Phase 3 RAG). */
   retrievedChunks?: string[];
   /** Current time, already formatted in the tenant's timezone. */
@@ -51,7 +53,7 @@ function renderStable(config: BusinessConfig): string {
   s.push(
     `You are the AI assistant for ${config.displayName}, a ${humanizeType(
       config.businessType,
-    )} business. You reply to customers over WhatsApp on the business's behalf.`,
+    )} business. You reply to customers on the business's behalf.`,
   );
 
   if (config.persona?.trim()) {
@@ -104,6 +106,8 @@ function renderVolatile(
     : context.customerId;
   v.push(`You are speaking with: ${who}.`);
 
+  v.push(renderChannelGuidance(context.channel));
+
   const chunks = context.retrievedChunks?.filter((c) => c.trim());
   if (chunks && chunks.length > 0) {
     v.push(
@@ -116,8 +120,30 @@ function renderVolatile(
   return v.join("\n\n");
 }
 
+/**
+ * Per-channel guidance. Web visitors are anonymous with no phone number, so the
+ * assistant must not promise WhatsApp messages/reminders there — it has to
+ * collect an email first. WhatsApp channels can reach the customer directly.
+ */
+function renderChannelGuidance(channel: PromptContext["channel"]): string {
+  if (channel === "web") {
+    return [
+      "# Channel: website live chat",
+      "You are talking to an anonymous visitor in a chat widget on the business's website. They are NOT on WhatsApp and you have NO phone number for them.",
+      "- Never say you will message, text, or remind them on WhatsApp.",
+      "- To send a reminder or follow-up, you must first ask for their email and save it with `update_customer`. Only after an email is on file may you call `schedule_reminder` (it will be emailed).",
+      "- If they ask to be reminded but have given no email, ask for their email first; don't claim a reminder is set until it is.",
+      "- When you hand off to a human (`escalate_to_human`), a team member may reply right here in the chat — so tell them to stay on this page for a reply. Also ask for their email (save it with `update_customer`) so the team can reach them if they leave.",
+    ].join("\n");
+  }
+  return [
+    "# Channel: WhatsApp",
+    "You are chatting with the customer over WhatsApp, so you can send them WhatsApp reminders and follow-ups at their number.",
+  ].join("\n");
+}
+
 const BEHAVIOR_RULES = `# How to behave
-- Be concise and friendly. WhatsApp messages should be short — a few sentences, not essays.
+- Be concise and friendly. Keep replies short — a few sentences, not essays.
 - Only state facts that come from this configuration, the retrieved knowledge, or your tools. Never invent prices, availability, policies, or medical/legal/financial advice.
 - To answer questions that may be covered by uploaded documents, call \`search_knowledge\` before saying you don't know.
 - To book, reschedule, or check appointment times, use the appointment tools — never promise a slot you have not confirmed with \`check_availability\`.
