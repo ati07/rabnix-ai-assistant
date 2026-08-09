@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { conversations, messages } from "@/lib/db/schema";
 import { requireTenant } from "@/lib/tenant";
 import { cn } from "@/lib/utils";
+import { Card, CardContent } from "@/components/ui/card";
 import { ConversationStatusBadge } from "@/components/dashboard/conversation-status-badge";
 
 export default async function ConversationDetailPage({
@@ -34,7 +35,7 @@ export default async function ConversationDetailPage({
     .orderBy(asc(messages.createdAt));
 
   return (
-    <div className="mx-auto flex h-full max-w-3xl flex-col">
+    <div className="mx-auto max-w-3xl">
       <div className="mb-4 flex items-center gap-3">
         <Link
           href="/dashboard/conversations"
@@ -51,11 +52,12 @@ export default async function ConversationDetailPage({
         <ConversationStatusBadge status={conversation.status} />
       </div>
 
-      <div className="space-y-3">
-        {thread.length === 0 && (
-          <p className="text-center text-muted-foreground">No messages.</p>
-        )}
-        {thread.map((m) => {
+      <Card>
+        <CardContent className="max-h-[70vh] space-y-3 overflow-y-auto">
+          {thread.length === 0 && (
+            <p className="text-center text-muted-foreground">No messages.</p>
+          )}
+          {thread.map((m) => {
           const outbound = m.direction === "outbound";
           return (
             <div
@@ -84,8 +86,9 @@ export default async function ConversationDetailPage({
               </div>
             </div>
           );
-        })}
-      </div>
+          })}
+        </CardContent>
+      </Card>
     </div>
   );
 }

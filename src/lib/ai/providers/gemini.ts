@@ -68,6 +68,18 @@ export class GeminiProvider implements LlmProvider {
       parts: [{ text: m.content }],
     }));
 
+    // generateContent must be asked to *continue* from a user turn — Gemini
+    // rejects a request whose final turn is the model's own. The loop below
+    // always appends a user (functionResponse) turn before iterating, so this
+    // only guards the initial history: trim any trailing model turns so we
+    // always start from the customer's latest message.
+    while (contents.length > 0 && contents[contents.length - 1].role === "model") {
+      contents.pop();
+    }
+    if (contents.length === 0) {
+      return { text: "", toolCalls: [], stopReason: "empty_input" };
+    }
+
     const toolCalls: ToolInvocation[] = [];
     const maxTurns = request.maxTurns ?? DEFAULT_MAX_TURNS;
 
@@ -76,18 +88,17 @@ export class GeminiProvider implements LlmProvider {
     let usage: LlmUsage | undefined;
 
     for (let turn = 0; turn < maxTurns; turn++) {
-      const response: GenerateContentResponse =
-        await this.client.models.generateContent({
-          model: this.model,
-          contents,
-          config: {
-            systemInstruction,
-            maxOutputTokens: request.maxTokens ?? DEFAULT_MAX_TOKENS,
-            ...(functionDeclarations.length > 0
-              ? { tools: [{ functionDeclarations }] }
-              : {}),
-          },
-        });
+      const response: GenerateContentResponse = await this.generateWithRetry({
+        model: this.model,
+        contents,
+        config: {
+          systemInstruction,
+          maxOutputTokens: request.maxTokens ?? DEFAULT_MAX_TOKENS,
+          ...(functionDeclarations.length > 0
+            ? { tools: [{ functionDeclarations }] }
+            : {}),
+        },
+      });
 
       usage = accumulateUsage(usage, response);
       const candidate = response.candidates?.[0];
@@ -136,6 +147,42 @@ export class GeminiProvider implements LlmProvider {
 
     return { text: finalText, toolCalls, stopReason, usage };
   }
+
+  /**
+   * Call generateContent, retrying transient network failures with backoff.
+   * Home/office links to Google's API occasionally reset mid-request
+   * (`ECONNRESET`, `fetch failed`, 5xx). Client errors like 400 are surfaced
+   * immediately — retrying a malformed request just wastes time.
+   */
+  private async generateWithRetry(
+    params: Parameters<GoogleGenAI["models"]["generateContent"]>[0],
+    attempts = 3,
+  ): Promise<GenerateContentResponse> {
+    let lastErr: unknown;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        return await this.client.models.generateContent(params);
+      } catch (err) {
+        lastErr = err;
+        if (i === attempts - 1 || !isTransientError(err)) throw err;
+        await new Promise((r) => setTimeout(r, 500 * 2 ** i)); // 0.5s, 1s
+      }
+    }
+    throw lastErr;
+  }
+}
+
+/** Whether an error is a transient network/server blip worth retrying. */
+function isTransientError(err: unknown): boolean {
+  const status = (err as { status?: number })?.status;
+  if (typeof status === "number") return status >= 500; // never retry 4xx
+  const codes = ["ECONNRESET", "ETIMEDOUT", "ECONNREFUSED", "EAI_AGAIN"];
+  const cause = (err as { cause?: { code?: string } })?.cause;
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    (cause?.code != null && codes.includes(cause.code)) ||
+    /fetch failed|network|socket hang up|terminated/i.test(msg)
+  );
 }
 
 /** Convert our neutral JSON-Schema tool spec to a Gemini function declaration. */

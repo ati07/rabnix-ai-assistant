@@ -4,9 +4,12 @@
 > project. It records what the app is, what's built, how the pieces fit, how to
 > run it, and what's left. Keep it updated as work lands.
 >
-> **Status as of 2026-08-06:** all planned build phases are complete. The app
-> builds, typechecks, and lints clean. Not yet exercised end-to-end against live
-> WhatsApp/email credentials (needs `.env` secrets — see [Environment](#environment)).
+> **Status as of 2026-08-09:** all planned build phases are complete. The app
+> builds, typechecks, and lints clean. **Official WhatsApp Cloud API is now
+> exercised end-to-end** on a Meta test number: inbound webhook → brain → Gemini
+> reply → persisted to the dashboard all work. The only remaining gap is
+> **outbound WhatsApp send**, which is gated by Meta account state (business
+> verification / payment / production number), not by our code.
 
 ---
 
@@ -285,6 +288,17 @@ subscribe to the `messages` field.
   `ActionResult = { ok: true } | { ok: false; error }`.
 - **Secrets**: never print secret values; access tokens are stored encrypted and
   never returned to the client.
+- **Cloud API — WABA must be subscribed to *our* app.** Inbound webhooks only
+  fire if `POST /{wabaId}/subscribed_apps` lists our Meta app. During bring-up the
+  WABA was subscribed to Meta's sample "WA DevX Webhook Events" app instead, so
+  messages reached Meta's test UI but never our webhook. Verify with
+  `GET /{wabaId}/subscribed_apps`. Also: the phone/WABA/business are **separate
+  Meta entities**, each with its own `can_send_message` in `GET
+  /{id}?fields=health_status` — check all three when a send fails.
+- **Cloud API — inbound resolves tenant from the DB, not `.env`.** The webhook
+  looks up `whatsapp_connections.cloud_api_config.phoneNumberId`; the access token
+  is decrypted from `accessTokenCipher` (never in `.env`). A `phone_number_id`
+  that isn't in the DB → "no Cloud API connection" and a silent drop.
 - **Committing** (when asked): the Bash tool is **bash, not PowerShell** — don't
   use `@'...'@` here-strings; write the message to a file and `git commit -F`.
   CRLF warnings from git are benign. End commit messages with the
@@ -294,9 +308,73 @@ subscribe to the `messages` field.
 
 ## 10. What's left / next steps
 
+### ▶ RESUME HERE (last session: 2026-08-09)
+
+**Cloud API is wired up and working end-to-end on a Meta *test* number.** Meta
+account access was restored, the webhook delivers, the brain replies with Gemini,
+and replies persist to the dashboard. Everything below the "outbound send" line
+is external Meta/Google account state, not code.
+
+**What got done this session (all landed in the working tree):**
+- ✅ **Inbound working.** Root cause of "messages not showing" was that the WABA
+  was subscribed to Meta's *sample* app, not ours. Fixed by
+  `POST /{wabaId}/subscribed_apps` with our app. Inbound resolves the tenant by
+  `phone_number_id` from the DB (`whatsapp_connections.cloud_api_config`), NOT
+  from `.env`. See the [WABA subscription gotcha](#9-gotchas--things-to-remember).
+- ✅ **Duplicate-processing / "model turn" 400 fixed.** Meta re-sends slow
+  webhooks → concurrent brain runs → history ending on an assistant turn (Gemini
+  rejects it). Fixed with idempotency in `brain.ts` (`.returning()` +
+  bail when `onConflictDoNothing` inserts nothing) and a trailing-model-turn
+  guard in `gemini.ts`.
+- ✅ **Gemini network resilience.** `gemini.ts` now retries transient failures
+  (`ECONNRESET`/5xx/`fetch failed`) with backoff; 4xx (incl. 429) surface
+  immediately.
+- ✅ **Gemini model / quota.** Free-tier `gemini-flash-latest` (→ `gemini-3.6-flash`)
+  is only ~20 req/day. `.env` `GEMINI_MODEL` is set to `gemini-3-flash-preview`
+  (confirmed working). Real fix for volume = enable billing on the Gemini project.
+- ✅ **Business profile filled** for the RABNIX tenant (from rabnix.com): display
+  name, type, timezone `Asia/Kolkata`, languages en+hi, 6 services, 7 FAQs,
+  policies, persona, hours Mon–Fri 09:00–21:00. Edit at `/dashboard/business`.
+- ✅ **Conversations detail scroll fix** (`conversations/[id]/page.tsx`): message
+  thread is a `Card` with `CardContent` capped at `max-h-[70vh] overflow-y-auto`
+  so long threads scroll inside the box. Also set `body` to `h-full` in
+  `src/app/layout.tsx`.
+
+**⛔ Remaining gap — outbound WhatsApp send (Meta account state, not code):**
+Reproduced the raw Graph send and queried `health_status`: WABA self-reports
+`can_send_message: BLOCKED` — `141006` (payment method), `141010` (business not
+verified), `131000` (incomplete business profile: Legal Name / Country /
+Website). Phone-number and App entities are AVAILABLE. Also the temporary access
+token keeps expiring (code `190`) — needs a **permanent System User token**.
+
+**To reach production (get a real WhatsApp number that can message customers):**
+1. **Business verification** (Business Settings → Security Center) + complete the
+   business profile (Legal Name, Country, Website) + add a **payment method** to
+   the WABA. These clear `141010` / `131000` / `141006`.
+2. **Permanent token:** create a System User with `whatsapp_business_messaging` +
+   `whatsapp_business_management`, generate a non-expiring token, re-save it in
+   `/dashboard/whatsapp` (Cloud API tab). Stops the `190` expiries.
+3. **Add + register a production phone number** in WhatsApp Manager (SMS/voice
+   OTP; the number must not be active on the consumer WhatsApp app). It gets a
+   new `phone_number_id` → put that in `/dashboard/whatsapp`. Register it for
+   Cloud API with a 6-digit PIN.
+4. **Stable public webhook URL:** replace the ephemeral `trycloudflare` quick
+   tunnel with a fixed HTTPS domain (deploy, or a named tunnel); update
+   `NEXT_PUBLIC_APP_URL` + the Meta callback URL. Set `META_APP_SECRET` (still
+   empty) so inbound signatures are verified in prod.
+
+Note: `sendCloudApiText` sends plain text only — fine inside the 24h customer
+window; cold/reminder (business-initiated) messages need **approved templates**
+(not built yet — see follow-ups).
+
+---
+
 Nothing on the original phase plan is outstanding. Candidate follow-ups (none
 started):
 
+- **WhatsApp message templates** — `sendCloudApiText` is plain-text only, which
+  only works inside the 24h customer window. Business-initiated / reminder
+  messages need approved templates + a template-send path in `cloud-api.ts`.
 - **Exercise end-to-end** with real `.env` secrets (Cloud API + email).
 - **Staff invites** — connect `staff.clerkUserId` to real Clerk org invitations.
 - **Analytics depth** — response-time / time-to-first-reply, CSV export.

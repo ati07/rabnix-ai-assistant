@@ -47,8 +47,10 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const raw = await req.text();
+  console.log("[cloud-webhook] POST received, body bytes:", raw.length);
 
   if (!verifyWebhookSignature(raw, req.headers.get("x-hub-signature-256"))) {
+    console.warn("[cloud-webhook] rejected: invalid X-Hub-Signature-256");
     return new Response("Invalid signature", { status: 401 });
   }
 
@@ -61,9 +63,29 @@ export async function POST(req: Request) {
 
   // Always ack 200 so Meta doesn't retry; process best-effort and log failures.
   try {
-    for (const change of parseWebhookChanges(body)) {
+    const changes = parseWebhookChanges(body);
+    console.log(
+      "[cloud-webhook] parsed text-message changes:",
+      changes.length,
+      changes.map((c) => ({ phoneNumberId: c.phoneNumberId, msgs: c.messages.length })),
+    );
+    if (changes.length === 0) {
+      // Not a text message we handle (status receipt, non-text, etc.) — log the
+      // top-level field so we can see what Meta actually sent.
+      const field = (body as { entry?: Array<{ changes?: Array<{ field?: string }> }> })
+        ?.entry?.[0]?.changes?.[0]?.field;
+      console.log("[cloud-webhook] no handled text messages; change field:", field);
+    }
+    for (const change of changes) {
       const conn = await findConnectionByPhoneNumberId(change.phoneNumberId);
-      if (!conn?.cloudApiConfig) continue;
+      if (!conn?.cloudApiConfig) {
+        console.warn(
+          "[cloud-webhook] no Cloud API connection in DB for phone_number_id:",
+          change.phoneNumberId,
+          "— check the ID saved in /dashboard/whatsapp matches this.",
+        );
+        continue;
+      }
 
       const tenant = await db.query.tenants.findFirst({
         where: eq(tenants.id, conn.tenantId),
@@ -71,6 +93,7 @@ export async function POST(req: Request) {
       if (!tenant) continue;
 
       for (const msg of change.messages) {
+        console.log("[cloud-webhook] handling message from", msg.from, "->", tenant.id);
         try {
           const result = await handleIncomingMessage(tenant, {
             from: msg.from,
