@@ -64,7 +64,13 @@ export async function handleIncomingMessage(
   );
 
   // Persist the inbound message first so it is part of the history we load.
-  await db
+  // The unique (tenantId, externalId) index dedups repeat webhook deliveries:
+  // WhatsApp/Meta re-sends a message if our webhook is slow to ack, so if the
+  // insert hits the conflict (nothing returned) this exact message is already
+  // being handled — bail out. Re-running would post a second reply and, worse,
+  // feed the model a history ending on the first pass's assistant turn (which
+  // Gemini rejects with "Requests ending with a model turn are not supported").
+  const inserted = await db
     .insert(messages)
     .values({
       tenantId: tenant.id,
@@ -74,7 +80,12 @@ export async function handleIncomingMessage(
       content: incoming.text,
       externalId: incoming.externalId,
     })
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning({ id: messages.id });
+
+  if (incoming.externalId && inserted.length === 0) {
+    return { reply: null, conversationId: conversation.id, toolCalls: [] };
+  }
 
   await touchConversation(conversation.id);
 
