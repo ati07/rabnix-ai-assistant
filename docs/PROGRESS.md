@@ -4,12 +4,13 @@
 > project. It records what the app is, what's built, how the pieces fit, how to
 > run it, and what's left. Keep it updated as work lands.
 >
-> **Status as of 2026-08-09:** all planned build phases are complete. The app
-> builds, typechecks, and lints clean. **Official WhatsApp Cloud API is now
-> exercised end-to-end** on a Meta test number: inbound webhook → brain → Gemini
-> reply → persisted to the dashboard all work. The only remaining gap is
-> **outbound WhatsApp send**, which is gated by Meta account state (business
-> verification / payment / production number), not by our code.
+> **Status as of 2026-08-10:** all planned build phases are complete. The app
+> builds and typechecks clean. **Official WhatsApp Cloud API** is exercised
+> end-to-end on a Meta test number (inbound → brain → Gemini → dashboard). A
+> third **embeddable web chat widget** channel is now live, with **human handover
+> working across web and WhatsApp**. The only remaining gap is **outbound WhatsApp
+> send on Baileys/templates**, gated by Meta account state (business verification
+> / payment / production number), not by our code.
 
 ---
 
@@ -126,6 +127,38 @@ Everything below is **implemented**. Paths are the source of truth.
   `whatsapp-connect.tsx` (QR) + `cloud-api-setup.tsx` (Cloud API form).
 - **Secret storage** — `src/lib/crypto.ts` (AES-256-GCM; Cloud API access tokens
   encrypted at rest with `ENCRYPTION_KEY`).
+
+### Web chat widget (embeddable) — a third `web` channel
+- **Why** — a fully-working customer channel with no Meta dependency: any tenant
+  drops a `<script>` on their site and anonymous visitors chat with the same AI
+  brain. Reuses `handleIncomingMessage` (no brain changes); `web` conversations
+  show up in the existing Conversations dashboard.
+- **Schema** — `web` added to `channel_type`; `web_chat_configs` table (one row
+  per tenant, resolved by rotatable `publicKey`, never `tenantId`).
+- **Public routes** (no auth, not under `/dashboard`) —
+  `src/app/api/chat/[key]/{config,message,history}`. `history` is
+  `dynamic=force-dynamic` + `cache-control: no-store` (polled live).
+- **Iframe UI** — `src/app/embed/[key]/page.tsx` + `src/components/chat/chat-window.tsx`
+  (visitor `sessionId` in `localStorage` = `customerId`; polls `/history` every 4s).
+- **Loader** — `public/widget.js` (vanilla; derives app origin from its own
+  `<script src>`, so all `/api/chat/*` calls are same-origin → no CORS).
+- **Dashboard** — `src/app/dashboard/chatbot/{page,actions}.tsx` +
+  `chatbot-settings.tsx` (enable, greeting, theme, launcher, copyable embed
+  snippet, rotate key). Embed snippet uses `NEXT_PUBLIC_APP_URL` — it MUST be a
+  live reachable origin or the embedded widget silently fails.
+- **Test harness** — `scripts/web-chat-test/` (`test-widget.html`, `e2e.mts`).
+
+### Human handover (all channels)
+- **AI pause** — `human`/`closed` conversation status makes the brain persist the
+  inbound message but return `reply:null`. Channel-agnostic.
+- **Staff controls** — `src/components/dashboard/conversation-reply.tsx` (Take
+  over / Hand back + composer; polls the thread live for any non-closed
+  conversation) → `src/app/dashboard/conversations/[id]/actions.ts`
+  (`sendStaffReply`, `setConversationStatus`).
+- **Delivery** (`deliverToCustomer`) — `web`: no-op (widget polls). `cloud_api`:
+  sent directly via `sendCloudApiToTenant` (stateless Graph, no worker needed).
+  `baileys` (or a failed cloud_api send): enqueued as a `reminders` row the
+  worker drains over the live socket.
 
 ### CRM
 - `src/app/dashboard/customers/{page,actions}.tsx`,
@@ -308,7 +341,42 @@ subscribe to the `messages` field.
 
 ## 10. What's left / next steps
 
-### ▶ RESUME HERE (last session: 2026-08-09)
+### ▶ RESUME HERE (last session: 2026-08-10)
+
+**Web chat widget + cross-channel human handover are built, merged to `main`, and
+working end-to-end.** This gives a fully-functional customer channel with no Meta
+dependency (see [Web chat widget](#web-chat-widget-embeddable--a-third-web-channel)
+and [Human handover](#human-handover-all-channels)). The widget, the live-updating
+dashboard, and handover on both web and WhatsApp Cloud API were all verified.
+
+**What got done this session (2026-08-10):**
+- ✅ **Web widget verified end-to-end** — `scripts/web-chat-test/e2e.mts` exercises
+  config/message/history + the full handover flow (takeover pauses AI, staff reply
+  surfaces in history, hand-back resumes AI) against the live server + DB. 13/13.
+- ✅ **Live visitor widget** — `/history` was served from browser cache, so staff
+  replies didn't appear. Fixed with `no-store` on both client fetch and route.
+- ✅ **Live dashboard thread** — `conversation-reply.tsx` only polled during human
+  takeover, so staff saw nothing while the AI auto-replied. Now polls every 5s for
+  any non-closed conversation (`7bcf131`).
+- ✅ **Cloud API handover delivery (the big one)** — staff replies/takeover notices
+  were enqueued as `reminders` rows drained ONLY by the worker, but a Cloud API
+  tenant runs no worker (AI replies go out inline in the webhook) → handover sat
+  `pending` forever. Fixed: `deliverToCustomer` sends `cloud_api` directly via
+  `sendCloudApiToTenant`; only `baileys`/failed-send uses the queue (`7bcf131`).
+- ✅ **Gemini rotation hardening** — removed retired `gemini-2.5-flash` (404) from
+  the chain and made unavailable-model errors skip-and-rotate instead of 500ing
+  (`570853b`).
+- ⚠️ **Two stale `pending` handover reminders** to `917565091186` remain in the DB
+  (pre-fix test messages). Left undelivered on purpose (a day old / would confuse
+  the customer). Safe to delete; a running worker would otherwise send them stale.
+
+**Note:** `NEXT_PUBLIC_APP_URL` in `.env` is a Cloudflare quick-tunnel that dies on
+restart. For local widget testing it must be `http://localhost:3000` or a fresh
+live tunnel, else the embedded widget silently fails to load.
+
+---
+
+### ▶ Earlier session (2026-08-09)
 
 **Cloud API is wired up and working end-to-end on a Meta *test* number.** Meta
 account access was restored, the webhook delivers, the brain replies with Gemini,
@@ -388,6 +456,10 @@ started):
 ## 11. Commit history (build milestones)
 
 ```
+7bcf131  Fix web chat live updates and cross-channel handover delivery
+570853b  Harden Gemini model rotation against retired models
+(merge)  Web chat widget (embeddable `web` channel) + human handover
+dc0088c  Add Google Gemini as default LLM provider
 40446f9  Fix analytics daily query GROUP BY error (42803)
 d33186d  Add analytics dashboard module
 168dbf7  Add official WhatsApp Cloud API channel
