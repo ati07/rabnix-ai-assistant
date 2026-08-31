@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tenants, businessConfig, staff } from "@/lib/db/schema";
 import { getSessionUser as getAuthUser } from "@/lib/auth";
+import { getImpersonatedTenantId } from "@/lib/impersonation";
 
 export type Tenant = typeof tenants.$inferSelect;
 
@@ -18,6 +19,8 @@ export interface Membership {
   tenant: Tenant;
   role: MembershipRole;
   staffId?: string;
+  /** True when a platform admin is viewing this tenant via impersonation. */
+  impersonating?: boolean;
 }
 
 export interface SessionUser {
@@ -62,6 +65,18 @@ export async function requirePlatformAdmin(): Promise<SessionUser> {
 export async function getActiveMembership(): Promise<Membership | null> {
   const u = await getSessionUser();
   if (!u) return null;
+
+  // 0. Platform admin impersonating a tenant — resolve that tenant directly and
+  //    grant owner-level access to it (god view). Never lazily provisions.
+  const impersonatedId = await getImpersonatedTenantId(u);
+  if (impersonatedId) {
+    const tenant = await db.query.tenants.findFirst({
+      where: eq(tenants.id, impersonatedId),
+    });
+    if (tenant) {
+      return { user: u, tenant, role: "owner", impersonating: true };
+    }
+  }
 
   // 1. Owner of an existing tenant.
   const owned = await db.query.tenants.findFirst({

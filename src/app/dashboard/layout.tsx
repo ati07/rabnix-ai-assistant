@@ -6,7 +6,8 @@ import { DashboardNav } from "@/components/dashboard/nav";
 import { ThemeToggle } from "@/components/dashboard/theme-toggle";
 import { UserMenu } from "@/components/dashboard/user-menu";
 import { UpgradeBanner } from "@/components/dashboard/upgrade-banner";
-import { getActiveTenant, getSessionUser } from "@/lib/tenant";
+import { ImpersonationBanner } from "@/components/dashboard/impersonation-banner";
+import { getActiveMembership } from "@/lib/tenant";
 import { getBillingState } from "@/lib/billing/subscription";
 
 export default async function DashboardLayout({
@@ -14,12 +15,13 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const user = await getSessionUser();
-  if (!user) redirect("/sign-in?redirect=/dashboard");
+  const membership = await getActiveMembership();
+  if (!membership) redirect("/sign-in?redirect=/dashboard");
 
-  // One account = one business: the workspace is created on first access.
-  const tenant = await getActiveTenant();
-  if (!tenant) redirect("/sign-in");
+  // One account = one business: the workspace is created on first access. When a
+  // platform admin is impersonating, `tenant` is the workspace they're viewing.
+  const { user, tenant, impersonating } = membership;
+  const isAdmin = user.role === "platform_admin";
 
   const [{ value: unreadCount }] = await db
     .select({ value: count() })
@@ -51,15 +53,16 @@ export default async function DashboardLayout({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
+        {impersonating && <ImpersonationBanner tenantName={tenant.name} />}
         <header className="flex h-14 items-center justify-between border-b px-6">
           <div className="text-sm font-medium md:hidden">{tenant.name}</div>
           <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />
-            <UserMenu email={user.email} />
+            <UserMenu email={user.email} isAdmin={isAdmin} />
           </div>
         </header>
         <main className="flex-1 overflow-y-auto px-6 py-8">
-          {!onPro && <UpgradeBanner lapsed={proLapsed} />}
+          {!onPro && !impersonating && <UpgradeBanner lapsed={proLapsed} />}
           {children}
         </main>
       </div>

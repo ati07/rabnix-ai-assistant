@@ -41,12 +41,25 @@
 >   Env: `RAZORPAY_KEY_ID/SECRET/WEBHOOK_SECRET`, `RAZORPAY_PLAN_PRO_MONTHLY/YEARLY`,
 >   `NEXT_PUBLIC_RAZORPAY_KEY_ID` (all optional — checkout is offered only when set).
 >   `maxChannels` gating is deferred (same framework) to avoid disrupting RABNIX.
-> - **Phase 4 — `/admin` platform god-view (next).** `platform_admin` role:
->   list/suspend/impersonate clients, activity, MRR.
+> - **Phase 4 — `/admin` platform god-view (done).** Gated by the `platform_admin`
+>   role (real check in `src/app/admin/layout.tsx`; proxy only does the optimistic
+>   cookie gate). Overview at `/admin`: KPI cards (MRR, Pro count, active-7d,
+>   signups-30d, totals, suspended) + a workspaces table with **suspend** (bans the
+>   owner user — enforced in `getSessionUser`, live sessions dropped) and
+>   **impersonate** ("view as"). Data helpers in `src/lib/admin.ts`
+>   (`getPlatformStats`, `listTenants`, `monthlyRevenueFor`; MRR reuses
+>   `effectivePlan`). **Impersonation** is an admin-only httpOnly cookie
+>   (`src/lib/impersonation.ts`) honored only for `platform_admin`; it overrides
+>   tenant resolution in `getActiveMembership` (adds `impersonating`) so the normal
+>   dashboard renders that tenant, with an amber banner + one-click exit. Admin
+>   actions in `src/app/admin/actions.ts`. **Bootstrap:** sign up normally, then
+>   `node scripts/make-admin.mjs <email>` to promote (`--revoke` to demote).
 >
-> **Data note:** the existing RABNIX tenant has `owner_user_id = NULL`; after the
-> platform admin signs up, re-claim it (`UPDATE tenants SET owner_user_id = …` +
-> `UPDATE users SET role = 'platform_admin'`).
+> **Data note:** the existing RABNIX tenant has `owner_user_id = NULL` (shows as
+> "unclaimed" in `/admin`, can't be impersonated/suspended until owned). To claim
+> it for a real account: `UPDATE tenants SET owner_user_id = <userId> WHERE
+> slug = 'rabnix…'`. Platform-admin promotion is now handled by
+> `scripts/make-admin.mjs` (no manual SQL needed).
 
 ---
 
