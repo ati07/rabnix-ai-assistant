@@ -9,6 +9,7 @@ import {
   Building2,
   BookOpen,
   Contact,
+  CreditCard,
   LayoutDashboard,
   MessagesSquare,
   Smartphone,
@@ -27,6 +28,7 @@ const links = [
   { href: "/dashboard/staff", label: "Team", icon: Users },
   { href: "/dashboard/whatsapp", label: "WhatsApp", icon: Smartphone },
   { href: "/dashboard/chatbot", label: "Web Chat", icon: Bot },
+  { href: "/dashboard/billing", label: "Billing", icon: CreditCard },
 ];
 
 export function DashboardNav({

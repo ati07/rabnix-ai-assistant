@@ -114,6 +114,12 @@ export const reminderStatusEnum = pgEnum("reminder_status", [
   "cancelled",
 ]);
 
+// Billing plan tiers. "free" is the always-usable restricted tier; "pro" unlocks
+// everything and is the paid, auto-recurring plan.
+export const planEnum = pgEnum("plan", ["free", "pro"]);
+
+export const billingCycleEnum = pgEnum("billing_cycle", ["monthly", "yearly"]);
+
 // ── Auth (custom, self-hosted — no third-party auth library) ─────────────
 // Email/password auth built on Node's `crypto` (scrypt) and these tables. See
 // src/lib/auth.ts. `role` = "user" (business owner/staff) | "platform_admin"
@@ -546,15 +552,73 @@ export const notifications = pgTable(
   (t) => [index("notifications_tenant_read_idx").on(t.tenantId, t.read, t.createdAt)],
 );
 
+// ── Billing (Razorpay subscriptions) ─────────────────────────────────────
+// One row per tenant tracking its plan + the linked Razorpay subscription.
+// Razorpay auto-charges each cycle; webhooks keep `status`/`currentPeriodEnd`
+// in sync. A tenant is "Pro" only while a Pro subscription is in a good status
+// and hasn't lapsed — see src/lib/billing/subscription.ts.
+export const subscriptions = pgTable(
+  "subscriptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    plan: planEnum("plan").notNull().default("free"),
+    /** Raw Razorpay subscription status (created/authenticated/active/pending/
+     *  halted/cancelled/completed/expired/paused) or "inactive" when no sub. */
+    status: text("status").notNull().default("inactive"),
+    billingCycle: billingCycleEnum("billing_cycle"),
+    razorpayCustomerId: text("razorpay_customer_id"),
+    razorpaySubscriptionId: text("razorpay_subscription_id"),
+    /** End of the paid period; access is granted through this instant. */
+    currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+    /** Owner asked to cancel; access continues until currentPeriodEnd. */
+    cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("subscriptions_tenant_id_idx").on(t.tenantId),
+    uniqueIndex("subscriptions_razorpay_sub_id_idx").on(t.razorpaySubscriptionId),
+  ],
+);
+
+// Idempotency + audit log for Razorpay webhook deliveries. We ack each event id
+// (from the `x-razorpay-event-id` header) exactly once so retries are no-ops.
+export const billingEvents = pgTable(
+  "billing_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Razorpay's delivery id — unique so a retried webhook is ignored. */
+    eventId: text("event_id").notNull().unique(),
+    type: text("type").notNull(),
+    tenantId: uuid("tenant_id").references(() => tenants.id, {
+      onDelete: "set null",
+    }),
+    payload: jsonb("payload"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("billing_events_tenant_id_idx").on(t.tenantId)],
+);
+
 // ── Relations ────────────────────────────────────────────────────────────
 export const tenantsRelations = relations(tenants, ({ one, many }) => ({
   config: one(businessConfig),
+  subscription: one(subscriptions),
   connections: many(whatsappConnections),
   documents: many(documents),
   conversations: many(conversations),
   customers: many(customers),
   staff: many(staff),
   appointments: many(appointments),
+}));
+
+export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [subscriptions.tenantId],
+    references: [tenants.id],
+  }),
 }));
 
 export const customersRelations = relations(customers, ({ one, many }) => ({

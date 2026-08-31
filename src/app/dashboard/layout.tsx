@@ -5,7 +5,9 @@ import { notifications } from "@/lib/db/schema";
 import { DashboardNav } from "@/components/dashboard/nav";
 import { ThemeToggle } from "@/components/dashboard/theme-toggle";
 import { UserMenu } from "@/components/dashboard/user-menu";
+import { UpgradeBanner } from "@/components/dashboard/upgrade-banner";
 import { getActiveTenant, getSessionUser } from "@/lib/tenant";
+import { getBillingState } from "@/lib/billing/subscription";
 
 export default async function DashboardLayout({
   children,
@@ -25,6 +27,11 @@ export default async function DashboardLayout({
     .where(
       and(eq(notifications.tenantId, tenant.id), eq(notifications.read, false)),
     );
+
+  // Nudge Free (and lapsed-Pro) tenants to upgrade; hidden for active Pro.
+  const billing = await getBillingState(tenant.id);
+  const onPro = billing.effectivePlan === "pro";
+  const proLapsed = billing.plan === "pro" && !onPro;
 
   return (
     <div className="flex flex-1">
@@ -51,7 +58,10 @@ export default async function DashboardLayout({
             <UserMenu email={user.email} />
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto px-6 py-8">{children}</main>
+        <main className="flex-1 overflow-y-auto px-6 py-8">
+          {!onPro && <UpgradeBanner lapsed={proLapsed} />}
+          {children}
+        </main>
       </div>
     </div>
   );

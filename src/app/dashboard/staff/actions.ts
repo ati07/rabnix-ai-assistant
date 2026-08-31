@@ -1,11 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { and, count, eq, gt, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { staff } from "@/lib/db/schema";
+import { staff, staffInvites } from "@/lib/db/schema";
 import { requireOwner, requireTenant } from "@/lib/tenant";
+import { getEntitlements } from "@/lib/billing/subscription";
 import {
   createInvite,
   inviteUrl,
@@ -56,10 +57,41 @@ function validate(payload: StaffInput):
   return { ok: true, value };
 }
 
+/**
+ * Count seats a tenant is using toward its plan's `maxStaff` limit: existing
+ * staff rows plus still-pending (unaccepted, unexpired) invites, since each
+ * invite will become a seat once accepted.
+ */
+async function usedSeats(tenantId: string): Promise<number> {
+  const [staffRow] = await db
+    .select({ n: count() })
+    .from(staff)
+    .where(eq(staff.tenantId, tenantId));
+  const [inviteRow] = await db
+    .select({ n: count() })
+    .from(staffInvites)
+    .where(
+      and(
+        eq(staffInvites.tenantId, tenantId),
+        isNull(staffInvites.acceptedAt),
+        gt(staffInvites.expiresAt, new Date()),
+      ),
+    );
+  return (staffRow?.n ?? 0) + (inviteRow?.n ?? 0);
+}
+
+const SEAT_LIMIT_MESSAGE =
+  "You've reached your plan's team limit. Upgrade to Pro to add more.";
+
 export async function addStaff(payload: StaffInput): Promise<ActionResult> {
   const tenant = await requireTenant();
   const res = validate(payload);
   if (!res.ok) return res;
+
+  const ent = await getEntitlements(tenant.id);
+  if ((await usedSeats(tenant.id)) >= ent.maxStaff) {
+    return { ok: false, error: SEAT_LIMIT_MESSAGE };
+  }
 
   await db.insert(staff).values({
     tenantId: tenant.id,
@@ -125,6 +157,11 @@ export async function inviteTeammate(
   const parsed = inviteSchema.safeParse(payload);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  }
+
+  const ent = await getEntitlements(tenant.id);
+  if ((await usedSeats(tenant.id)) >= ent.maxStaff) {
+    return { ok: false, error: SEAT_LIMIT_MESSAGE };
   }
 
   const { token } = await createInvite({

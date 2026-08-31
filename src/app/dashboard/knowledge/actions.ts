@@ -5,6 +5,10 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { documents } from "@/lib/db/schema";
 import { requireTenant } from "@/lib/tenant";
+import {
+  canAddDocument,
+  KNOWLEDGE_LIMIT_MESSAGE,
+} from "@/lib/billing/subscription";
 import { ingestDocument } from "@/lib/ai/rag";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -20,6 +24,10 @@ export async function ingestTextDocument(
   const cleanText = text.trim();
   if (!cleanTitle) return { ok: false, error: "Title is required." };
   if (cleanText.length < 10) return { ok: false, error: "Add a bit more text." };
+
+  if (!(await canAddDocument(tenant.id))) {
+    return { ok: false, error: KNOWLEDGE_LIMIT_MESSAGE };
+  }
 
   try {
     await ingestDocument(tenant.id, {
@@ -46,6 +54,10 @@ export async function ingestWebsiteDocument(url: string): Promise<ActionResult> 
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     return { ok: false, error: "Only http/https URLs are supported." };
+  }
+
+  if (!(await canAddDocument(tenant.id))) {
+    return { ok: false, error: KNOWLEDGE_LIMIT_MESSAGE };
   }
 
   try {

@@ -33,6 +33,17 @@ const serverSchema = z.object({
   META_APP_SECRET: z.string().optional(),
   WHATSAPP_API_VERSION: z.string().default("v21.0"),
 
+  // Billing (Razorpay Subscriptions). KEY_ID/KEY_SECRET authorize API calls
+  // (HTTP Basic); WEBHOOK_SECRET verifies inbound webhook signatures (HMAC).
+  // The two PLAN ids come from Razorpay Dashboard → Subscriptions → Plans and
+  // map our Pro tier's monthly/yearly billing. All optional so dev boots without
+  // billing; when unset, checkout is disabled and everyone stays on Free.
+  RAZORPAY_KEY_ID: z.string().optional(),
+  RAZORPAY_KEY_SECRET: z.string().optional(),
+  RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
+  RAZORPAY_PLAN_PRO_MONTHLY: z.string().optional(),
+  RAZORPAY_PLAN_PRO_YEARLY: z.string().optional(),
+
   // ITERATION 1: knowledge retrieval uses Postgres full-text search — no
   // embeddings provider is needed. Reintroduce EMBEDDING_*/GEMINI_API_KEY when
   // semantic vector search is added back.
@@ -40,6 +51,8 @@ const serverSchema = z.object({
 
 const clientSchema = z.object({
   NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
+  // Razorpay Checkout needs the public key id in the browser. Non-secret.
+  NEXT_PUBLIC_RAZORPAY_KEY_ID: z.string().optional(),
 });
 
 /**

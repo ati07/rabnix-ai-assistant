@@ -1,6 +1,10 @@
 import { PDFParse } from "pdf-parse";
 import { ingestDocument } from "@/lib/ai/rag";
 import { requireTenant } from "@/lib/tenant";
+import {
+  canAddDocument,
+  KNOWLEDGE_LIMIT_MESSAGE,
+} from "@/lib/billing/subscription";
 
 export const runtime = "nodejs";
 
@@ -24,6 +28,9 @@ export async function POST(req: Request) {
   }
   if (file.size > MAX_BYTES) {
     return Response.json({ ok: false, error: "File is larger than 20 MB." }, { status: 400 });
+  }
+  if (!(await canAddDocument(tenant.id))) {
+    return Response.json({ ok: false, error: KNOWLEDGE_LIMIT_MESSAGE }, { status: 402 });
   }
 
   try {

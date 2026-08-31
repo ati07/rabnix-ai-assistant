@@ -26,9 +26,22 @@
 >   `requireOwner` in `src/lib/tenant.ts`; `getActiveTenant`/`requireTenant` kept
 >   as wrappers). Accept flow at `/invite/[token]`; Team-page invite manager.
 >   `src/lib/invites.ts`. Migration `drizzle/0001_add_staff_invites.sql`.
-> - **Phase 3 — Razorpay billing (next).** Plans, `/dashboard/billing`, webhook,
->   subscription tables, access gating. Env: `RAZORPAY_KEY_ID/SECRET/WEBHOOK_SECRET`.
-> - **Phase 4 — `/admin` platform god-view (pending).** `platform_admin` role:
+> - **Phase 3 — Razorpay billing (done).** Free + Pro (monthly/yearly) via Razorpay
+>   **Subscriptions** (auto-recurring mandates). Config-gated seam like the email /
+>   Cloud-API ones — raw HTTP, no SDK (`src/lib/billing/razorpay.ts`); plan catalog
+>   + entitlements in `plans.ts`; subscription state/gating helpers in
+>   `subscription.ts` (`effectivePlan` reverts a lapsed Pro to Free limits — no total
+>   lockout since Free is always usable). `/dashboard/billing` opens Razorpay
+>   Checkout; webhook at `/api/billing/webhook` verifies HMAC-SHA256 + dedupes on
+>   `billing_events.event_id`. **Hard gate** on entitlements: staff seats
+>   (`maxStaff`, counts staff + pending invites) and knowledge docs
+>   (`maxKnowledgeDocs`, incl. the PDF-upload route) block on Free; an upgrade banner
+>   shows in the dashboard layout for Free / lapsed-Pro tenants. Tables
+>   `subscriptions` + `billing_events`; migration `drizzle/0002_add_billing.sql`.
+>   Env: `RAZORPAY_KEY_ID/SECRET/WEBHOOK_SECRET`, `RAZORPAY_PLAN_PRO_MONTHLY/YEARLY`,
+>   `NEXT_PUBLIC_RAZORPAY_KEY_ID` (all optional — checkout is offered only when set).
+>   `maxChannels` gating is deferred (same framework) to avoid disrupting RABNIX.
+> - **Phase 4 — `/admin` platform god-view (next).** `platform_admin` role:
 >   list/suspend/impersonate clients, activity, MRR.
 >
 > **Data note:** the existing RABNIX tenant has `owner_user_id = NULL`; after the
