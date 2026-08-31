@@ -440,6 +440,31 @@ export const staff = pgTable(
   (t) => [index("staff_tenant_id_idx").on(t.tenantId)],
 );
 
+// ── Staff invites ────────────────────────────────────────────────────────
+// A pending invitation for someone to join a tenant's team. The owner creates
+// one; we email a link carrying an opaque token whose SHA-256 hash is stored
+// here (never the raw token). On accept we link/create the auth user and add a
+// `staff` row. Rows are single-use (set `acceptedAt`) and expire.
+export const staffInvites = pgTable(
+  "staff_invites",
+  {
+    id: text("id").primaryKey(), // crypto.randomUUID()
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    role: staffRoleEnum("role").notNull().default("staff"),
+    tokenHash: text("token_hash").notNull().unique(),
+    invitedByUserId: text("invited_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("staff_invites_tenant_id_idx").on(t.tenantId)],
+);
+
 // ── Appointments ─────────────────────────────────────────────────────────
 export const appointments = pgTable(
   "appointments",

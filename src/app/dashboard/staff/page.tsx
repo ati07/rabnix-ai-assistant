@@ -1,14 +1,19 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, gt, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { staff } from "@/lib/db/schema";
-import { requireTenant } from "@/lib/tenant";
+import { staff, staffInvites } from "@/lib/db/schema";
+import { requireMembership } from "@/lib/tenant";
 import {
   StaffManager,
   type StaffMember,
 } from "@/components/dashboard/staff-manager";
+import {
+  InviteManager,
+  type PendingInvite,
+} from "@/components/dashboard/invite-manager";
 
 export default async function StaffPage() {
-  const tenant = await requireTenant();
+  const { tenant, role } = await requireMembership();
+  const isOwner = role === "owner";
 
   const rows = await db
     .select()
@@ -23,15 +28,43 @@ export default async function StaffPage() {
     phone: r.phone,
     role: r.role,
     notifyChannels: r.notifyChannels ?? ["dashboard"],
+    hasLogin: Boolean(r.userId),
   }));
 
+  // Only owners manage invites — load the pending (un-accepted, un-expired) ones.
+  const invites: PendingInvite[] = isOwner
+    ? (
+        await db
+          .select()
+          .from(staffInvites)
+          .where(
+            and(
+              eq(staffInvites.tenantId, tenant.id),
+              isNull(staffInvites.acceptedAt),
+              gt(staffInvites.expiresAt, new Date()),
+            ),
+          )
+          .orderBy(asc(staffInvites.email))
+      ).map((i) => ({
+        id: i.id,
+        email: i.email,
+        role: i.role,
+        expiresAt: i.expiresAt.toISOString(),
+      }))
+    : [];
+
   return (
-    <div className="mx-auto max-w-3xl">
-      <h1 className="text-2xl font-semibold">Team</h1>
-      <p className="mt-1 mb-6 text-muted-foreground">
-        Add your team so the assistant can alert them about bookings, escalations, and
-        anything that needs a human.
-      </p>
+    <div className="mx-auto max-w-3xl space-y-8">
+      <div>
+        <h1 className="text-2xl font-semibold">Team</h1>
+        <p className="mt-1 text-muted-foreground">
+          Add your team so the assistant can alert them about bookings, escalations,
+          and anything that needs a human.
+        </p>
+      </div>
+
+      {isOwner && <InviteManager invites={invites} />}
+
       <StaffManager members={members} />
     </div>
   );

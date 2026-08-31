@@ -8,6 +8,13 @@
       "when": 1788168780279,
       "tag": "0000_amazing_talkback",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788170800064,
+      "tag": "0001_add_staff_invites",
+      "breakpoints": true
     }
   ]
 }

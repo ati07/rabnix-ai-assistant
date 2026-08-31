@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Mail, Pencil, Phone, Trash2, X } from "lucide-react";
+import { Check, Loader2, Mail, Pencil, Phone, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   addStaff,
@@ -31,6 +31,8 @@ export interface StaffMember {
   phone: string | null;
   role: "owner" | "staff";
   notifyChannels: ("whatsapp" | "email" | "dashboard")[];
+  /** True once this member has accepted an invite and has a login. */
+  hasLogin?: boolean;
 }
 
 const EMPTY: StaffForm = {
@@ -281,6 +283,11 @@ function StaffList({
                 <Badge variant={m.role === "owner" ? "default" : "secondary"}>
                   {m.role}
                 </Badge>
+                {m.hasLogin && (
+                  <Badge variant="outline" className="gap-1">
+                    <Check className="size-3" /> Has login
+                  </Badge>
+                )}
               </div>
               <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-muted-foreground">
                 {m.phone && (

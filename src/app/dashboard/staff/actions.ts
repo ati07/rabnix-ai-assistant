@@ -5,7 +5,13 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { staff } from "@/lib/db/schema";
-import { requireTenant } from "@/lib/tenant";
+import { requireOwner, requireTenant } from "@/lib/tenant";
+import {
+  createInvite,
+  inviteUrl,
+  revokeInvite,
+  sendInviteEmail,
+} from "@/lib/invites";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -94,6 +100,62 @@ export async function deleteStaff(id: string): Promise<ActionResult> {
   await db
     .delete(staff)
     .where(and(eq(staff.id, id), eq(staff.tenantId, tenant.id)));
+  revalidatePath("/dashboard/staff");
+  return { ok: true };
+}
+
+// ── Invites (owner only) ─────────────────────────────────────────────────
+
+const inviteSchema = z.object({
+  email: z.string().trim().email("Enter a valid email."),
+  role: z.enum(["owner", "staff"]).default("staff"),
+});
+
+export type InviteInput = z.input<typeof inviteSchema>;
+
+/**
+ * Invite a teammate by email. Owner-only. Emails a single-use accept link; when
+ * no email provider is configured the raw link is returned so the owner can
+ * share it manually. The token itself is never persisted or logged.
+ */
+export async function inviteTeammate(
+  payload: InviteInput,
+): Promise<ActionResult & { inviteUrl?: string }> {
+  const { tenant, user } = await requireOwner();
+  const parsed = inviteSchema.safeParse(payload);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  }
+
+  const { token } = await createInvite({
+    tenantId: tenant.id,
+    email: parsed.data.email,
+    role: parsed.data.role,
+    invitedByUserId: user.id,
+  });
+
+  let delivered = false;
+  try {
+    delivered = await sendInviteEmail({
+      to: parsed.data.email,
+      tenantName: tenant.name,
+      inviterName: user.name,
+      token,
+    });
+  } catch (err) {
+    console.error("[invite] email delivery failed:", err);
+  }
+
+  revalidatePath("/dashboard/staff");
+  // Only hand the link back to the owner when we couldn't email it for them.
+  if (delivered) return { ok: true };
+  return { ok: true, inviteUrl: inviteUrl(token) };
+}
+
+/** Revoke a pending invite. Owner-only. */
+export async function revokeInviteAction(id: string): Promise<ActionResult> {
+  const { tenant } = await requireOwner();
+  await revokeInvite({ id, tenantId: tenant.id });
   revalidatePath("/dashboard/staff");
   return { ok: true };
 }

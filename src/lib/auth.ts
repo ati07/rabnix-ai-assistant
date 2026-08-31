@@ -1,5 +1,4 @@
 import {
-  createHash,
   randomBytes,
   randomUUID,
   scrypt as scryptCb,
@@ -11,6 +10,7 @@ import { and, eq, gt, isNull, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { passwordResetTokens, sessions, users } from "@/lib/db/schema";
 import { SESSION_COOKIE, SESSION_TTL_DAYS } from "@/lib/auth-cookie";
+import { generateToken, hashToken } from "@/lib/tokens";
 
 /**
  * Self-hosted email/password auth — no third-party auth library. Built only on
@@ -49,17 +49,6 @@ export async function verifyPassword(
   const expected = Buffer.from(hashB64, "base64");
   const derived = (await scrypt(password, salt, expected.length)) as Buffer;
   return expected.length === derived.length && timingSafeEqual(expected, derived);
-}
-
-// ── Token hashing ──────────────────────────────────────────────────────────
-
-function sha256(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
-}
-
-function newToken(): { token: string; hash: string } {
-  const token = randomBytes(32).toString("base64url");
-  return { token, hash: sha256(token) };
 }
 
 // ── Sign up / in ─────────────────────────────────────────────────────────
@@ -110,7 +99,8 @@ export async function verifyCredentials(
 
 /** Create a session for `userId` and set the httpOnly session cookie. */
 export async function createSession(userId: string): Promise<void> {
-  const { token, hash } = newToken();
+  const token = generateToken();
+  const hash = hashToken(token);
   const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
 
   const hdrs = await headers();
@@ -144,7 +134,7 @@ export async function getSessionUser(): Promise<AuthUser | null> {
   if (!token) return null;
 
   const session = await db.query.sessions.findFirst({
-    where: eq(sessions.tokenHash, sha256(token)),
+    where: eq(sessions.tokenHash, hashToken(token)),
   });
   if (!session) return null;
 
@@ -170,7 +160,7 @@ export async function destroySession(): Promise<void> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   if (token) {
-    await db.delete(sessions).where(eq(sessions.tokenHash, sha256(token)));
+    await db.delete(sessions).where(eq(sessions.tokenHash, hashToken(token)));
     store.delete(SESSION_COOKIE);
   }
 }
@@ -189,7 +179,8 @@ export async function createPasswordResetToken(
   });
   if (!user) return null;
 
-  const { token, hash } = newToken();
+  const token = generateToken();
+  const hash = hashToken(token);
   await db.insert(passwordResetTokens).values({
     id: randomUUID(),
     userId: user.id,
@@ -209,7 +200,7 @@ export async function resetPasswordWithToken(
 ): Promise<boolean> {
   const record = await db.query.passwordResetTokens.findFirst({
     where: and(
-      eq(passwordResetTokens.tokenHash, sha256(token)),
+      eq(passwordResetTokens.tokenHash, hashToken(token)),
       isNull(passwordResetTokens.usedAt),
       gt(passwordResetTokens.expiresAt, new Date()),
     ),
