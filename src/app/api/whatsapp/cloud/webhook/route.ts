@@ -93,7 +93,13 @@ export async function POST(req: Request) {
       if (!tenant) continue;
 
       for (const msg of change.messages) {
-        console.log("[cloud-webhook] handling message from", msg.from, "->", tenant.id);
+        // msg.from is a customer phone number (PII/PHI for healthcare tenants) —
+        // only log it off-production. In prod, the tenant id is enough to trace.
+        if (process.env.NODE_ENV !== "production") {
+          console.log("[cloud-webhook] handling message from", msg.from, "->", tenant.id);
+        } else {
+          console.log("[cloud-webhook] handling message -> tenant", tenant.id);
+        }
         try {
           const result = await handleIncomingMessage(tenant, {
             from: msg.from,

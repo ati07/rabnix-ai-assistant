@@ -1,24 +1,23 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { SESSION_COOKIE } from "@/lib/auth-cookie";
 
 /**
- * Next.js 16 renamed Middleware → Proxy. Clerk still ships `clerkMiddleware`,
- * which returns a handler compatible with the Proxy convention, so we
- * default-export it from `proxy.ts` (see node_modules/next/dist/docs proxy guide).
+ * Next.js 16 renamed Middleware → Proxy. This is an OPTIMISTIC gate: it only
+ * checks for the presence of a session cookie to redirect signed-out visitors
+ * away from protected areas. Real authorization (valid session, `platform_admin`
+ * role for `/admin`) is enforced in the layouts/pages/server actions — never
+ * trust the cookie's presence alone.
  */
-
-const isProtectedRoute = createRouteMatcher(["/dashboard(.*)"]);
-
-export default clerkMiddleware(async (auth, req) => {
-  if (isProtectedRoute(req)) {
-    await auth.protect();
+export default function proxy(request: NextRequest) {
+  const sessionCookie = request.cookies.get(SESSION_COOKIE)?.value;
+  if (!sessionCookie) {
+    const signInUrl = new URL("/sign-in", request.url);
+    signInUrl.searchParams.set("redirect", request.nextUrl.pathname);
+    return NextResponse.redirect(signInUrl);
   }
-});
+  return NextResponse.next();
+}
 
 export const config = {
-  matcher: [
-    // Skip Next internals and static files unless found in search params.
-    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|png|gif|svg|ico|webp|woff2?|ttf|map)).*)",
-    // Always run on API routes.
-    "/(api|trpc)(.*)",
-  ],
+  matcher: ["/dashboard/:path*", "/admin/:path*"],
 };

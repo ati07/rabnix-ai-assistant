@@ -151,15 +151,21 @@ export function parseWebhookChanges(body: unknown): ParsedWebhookChange[] {
 }
 
 /**
- * Verify a webhook's `X-Hub-Signature-256` against META_APP_SECRET. Returns
- * true when no app secret is configured (verification disabled) so local dev
- * works without it — set META_APP_SECRET in production.
+ * Verify a webhook's `X-Hub-Signature-256` against META_APP_SECRET.
+ *
+ * Fail-open only in non-production (so local dev works without the secret). In
+ * production a missing secret or signature is rejected — otherwise anyone who
+ * knows the public webhook URL could inject fake inbound messages (LLM cost,
+ * spam conversations, bogus bookings). `env.ts` already refuses to boot in
+ * production without META_APP_SECRET, so the fail-open branch is dev-only.
  */
 export function verifyWebhookSignature(
   rawBody: string,
   signatureHeader: string | null,
 ): boolean {
-  if (!env.META_APP_SECRET) return true;
+  if (!env.META_APP_SECRET) {
+    return process.env.NODE_ENV !== "production";
+  }
   if (!signatureHeader?.startsWith("sha256=")) return false;
 
   const expected = createHmac("sha256", env.META_APP_SECRET)

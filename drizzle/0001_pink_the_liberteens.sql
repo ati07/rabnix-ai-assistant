@@ -1,1 +1,0 @@
-ALTER TABLE "whatsapp_connections" ADD COLUMN "qr_code" text;

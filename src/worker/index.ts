@@ -114,7 +114,10 @@ async function startTenant(tenant: Tenant) {
     connectionId,
     handlers: {
       onMessage: async (msg) => {
-        console.log(`[${tenant.slug}] ← ${msg.from}: ${msg.text}`);
+        // Message bodies + phone numbers are PII/PHI — keep them out of prod logs.
+        if (process.env.NODE_ENV !== "production") {
+          console.log(`[${tenant.slug}] ← ${msg.from}: ${msg.text}`);
+        }
         const result = await handleIncomingMessage(tenant, {
           from: msg.from,
           text: msg.text,
@@ -124,7 +127,9 @@ async function startTenant(tenant: Tenant) {
         });
         if (result.reply) {
           await channel.sendText(msg.from, result.reply);
-          console.log(`[${tenant.slug}] → ${msg.from}: ${result.reply}`);
+          if (process.env.NODE_ENV !== "production") {
+            console.log(`[${tenant.slug}] → ${msg.from}: ${result.reply}`);
+          }
         }
       },
       onQR: (qr) => {

@@ -1,7 +1,9 @@
 import Link from "next/link";
-import { Show, SignInButton, SignUpButton } from "@clerk/nextjs";
+import { getSessionUser } from "@/lib/tenant";
 
-export default function Home() {
+export default async function Home() {
+  const user = await getSessionUser();
+
   return (
     <div className="flex flex-1 flex-col items-center justify-center bg-zinc-50 px-6 dark:bg-black">
       <main className="flex w-full max-w-2xl flex-col items-center gap-8 text-center">
@@ -17,26 +19,29 @@ export default function Home() {
         </div>
 
         <div className="flex flex-col gap-4 sm:flex-row">
-          <Show when="signed-out">
-            <SignInButton>
-              <button className="h-12 rounded-full bg-foreground px-6 text-background transition-colors hover:opacity-90">
-                Sign in
-              </button>
-            </SignInButton>
-            <SignUpButton>
-              <button className="h-12 rounded-full border border-black/[.12] px-6 transition-colors hover:bg-black/[.04] dark:border-white/[.18] dark:hover:bg-white/[.06]">
-                Create account
-              </button>
-            </SignUpButton>
-          </Show>
-          <Show when="signed-in">
+          {user ? (
             <Link
               href="/dashboard"
               className="flex h-12 items-center rounded-full bg-foreground px-6 text-background transition-colors hover:opacity-90"
             >
               Go to dashboard
             </Link>
-          </Show>
+          ) : (
+            <>
+              <Link
+                href="/sign-in"
+                className="flex h-12 items-center rounded-full bg-foreground px-6 text-background transition-colors hover:opacity-90"
+              >
+                Sign in
+              </Link>
+              <Link
+                href="/sign-up"
+                className="flex h-12 items-center rounded-full border border-black/[.12] px-6 transition-colors hover:bg-black/[.04] dark:border-white/[.18] dark:hover:bg-white/[.06]"
+              >
+                Create account
+              </Link>
+            </>
+          )}
         </div>
       </main>
     </div>

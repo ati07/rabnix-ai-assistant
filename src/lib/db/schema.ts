@@ -15,7 +15,8 @@ import { relations, sql } from "drizzle-orm";
 /**
  * Multi-tenant schema for the WhatsApp AI assistant.
  *
- * Every business is a `tenant` (mapped to a Clerk Organization). All
+ * Every business is a `tenant`, owned by a `users` row via
+ * `tenants.ownerUserId` (one account = one business). All
  * business-owned rows carry `tenantId` and must always be queried with a
  * tenant filter — that is the isolation boundary for the whole app.
  *
@@ -113,33 +114,81 @@ export const reminderStatusEnum = pgEnum("reminder_status", [
   "cancelled",
 ]);
 
+// ── Auth (custom, self-hosted — no third-party auth library) ─────────────
+// Email/password auth built on Node's `crypto` (scrypt) and these tables. See
+// src/lib/auth.ts. `role` = "user" (business owner/staff) | "platform_admin"
+// (us). `passwordHash` is scrypt (`scrypt$salt$hash`), never the raw password.
+export const users = pgTable("users", {
+  id: text("id").primaryKey(), // crypto.randomUUID()
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  emailVerified: boolean("email_verified").notNull().default(false),
+  image: text("image"),
+  passwordHash: text("password_hash").notNull(),
+  role: text("role").notNull().default("user"),
+  // Platform operator can suspend an account; a banned user's sessions are
+  // rejected on the next request.
+  banned: boolean("banned").notNull().default(false),
+  banReason: text("ban_reason"),
+  banExpires: timestamp("ban_expires", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Opaque server-side sessions. The cookie holds a high-entropy random token;
+// only its SHA-256 hash is stored here, so a DB leak can't be used to forge a
+// session. Look up by `tokenHash`.
+export const sessions = pgTable(
+  "sessions",
+  {
+    id: text("id").primaryKey(), // crypto.randomUUID()
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull().unique(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("sessions_user_id_idx").on(t.userId)],
+);
+
+// Single-use password-reset tokens (also SHA-256-hashed at rest).
+export const passwordResetTokens = pgTable(
+  "password_reset_tokens",
+  {
+    id: text("id").primaryKey(), // crypto.randomUUID()
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull().unique(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("password_reset_tokens_user_id_idx").on(t.userId)],
+);
+
 // ── Tenants ──────────────────────────────────────────────────────────────
+// One account = one business: a tenant is owned by exactly one auth `user`
+// (`ownerUserId`). Created on the owner's first dashboard access (see
+// src/lib/tenant.ts). Staff are additional users linked via `staff.userId`.
 export const tenants = pgTable(
   "tenants",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clerkOrgId: text("clerk_org_id").notNull(),
+    ownerUserId: text("owner_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     name: text("name").notNull(),
     slug: text("slug").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("tenants_clerk_org_id_idx").on(t.clerkOrgId),
+    uniqueIndex("tenants_owner_user_id_idx").on(t.ownerUserId),
     uniqueIndex("tenants_slug_idx").on(t.slug),
   ],
-);
-
-// ── Users (local mirror of Clerk users; for attribution / human handoff) ──
-export const users = pgTable(
-  "users",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    clerkUserId: text("clerk_user_id").notNull(),
-    email: text("email"),
-    displayName: text("display_name"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [uniqueIndex("users_clerk_user_id_idx").on(t.clerkUserId)],
 );
 
 // ── Business config (the "logic" the AI understands) ─────────────────────
@@ -375,8 +424,8 @@ export const staff = pgTable(
     tenantId: uuid("tenant_id")
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
-    /** Maps to a Clerk user once the staff member accepts an invite. */
-    clerkUserId: text("clerk_user_id"),
+    /** Links to an auth `user` once the staff member accepts an invite. */
+    userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
     name: text("name").notNull(),
     email: text("email"),
     /** WhatsApp number for staff notifications (E.164). */
