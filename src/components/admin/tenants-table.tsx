@@ -134,10 +134,10 @@ function Row({ row, adminEmail }: { row: AdminTenantView; adminEmail: string }) 
         )}
       </td>
       <td className="px-4 py-3">
-        <Badge variant={row.plan === "pro" ? "default" : "secondary"}>
-          {row.plan === "pro" ? "Pro" : "Free"}
+        <Badge variant={row.plan === "free" ? "secondary" : "default"}>
+          {row.plan === "pro" ? "Pro" : row.plan === "basic" ? "Basic" : "Free"}
         </Badge>
-        {row.plan === "pro" && row.billingCycle && (
+        {row.plan !== "free" && row.billingCycle && (
           <div className="mt-1 text-xs text-muted-foreground">{row.billingCycle}</div>
         )}
       </td>

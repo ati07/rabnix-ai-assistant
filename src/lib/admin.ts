@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   conversations,
@@ -10,7 +10,7 @@ import {
   users,
 } from "@/lib/db/schema";
 import { effectivePlan, type Subscription } from "@/lib/billing/subscription";
-import { PLANS, type BillingCycle, type PlanId } from "@/lib/billing/plans";
+import { PLANS, type BillingCycle, type PaidTier, type PlanId } from "@/lib/billing/plans";
 
 /**
  * Platform-admin data helpers (the `/admin` god-view). These read across ALL
@@ -19,10 +19,16 @@ import { PLANS, type BillingCycle, type PlanId } from "@/lib/billing/plans";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Monthly-equivalent revenue (whole rupees) for a Pro subscription's cycle. */
-export function monthlyRevenueFor(cycle: BillingCycle | null): number {
-  const price = PLANS.pro.price;
-  if (!price) return 0;
+/**
+ * Monthly-equivalent recurring revenue (whole rupees) for a paid tier's cycle.
+ * Lifetime purchases are one-time, not recurring, so they contribute 0 to MRR.
+ */
+export function monthlyRevenueFor(
+  tier: PaidTier,
+  cycle: BillingCycle | null,
+): number {
+  const price = PLANS[tier].price;
+  if (!price || cycle === null) return 0;
   return cycle === "yearly" ? Math.round(price.yearly / 12) : price.monthly;
 }
 
@@ -49,7 +55,7 @@ export async function getPlatformStats(): Promise<PlatformStats> {
     [{ n: newTenants30d }],
     [{ n: totalMessages }],
     [{ n: activeTenants7d }],
-    proSubs,
+    paidSubs,
   ] = await Promise.all([
     db.select({ n: count() }).from(tenants),
     db
@@ -63,17 +69,24 @@ export async function getPlatformStats(): Promise<PlatformStats> {
       .select({ n: sql<number>`count(distinct ${messages.tenantId})::int` })
       .from(messages)
       .where(gte(messages.createdAt, since7)),
-    db.select().from(subscriptions).where(eq(subscriptions.plan, "pro")),
+    db
+      .select()
+      .from(subscriptions)
+      .where(inArray(subscriptions.plan, ["basic", "pro"])),
   ]);
 
-  // Effective-Pro filter + MRR are computed in JS so we reuse the single source
-  // of truth (`effectivePlan`) rather than re-encoding the status rules in SQL.
+  // Active-paid filter + MRR are computed in JS so we reuse the single source of
+  // truth (`effectivePlan`) rather than re-encoding the status rules in SQL. The
+  // trial window is irrelevant here — these are paid rows. Lifetime rows count as
+  // a Pro tenant but add 0 MRR (they don't recur).
   let proTenants = 0;
   let mrr = 0;
-  for (const sub of proSubs as Subscription[]) {
-    if (effectivePlan(sub) === "pro") {
-      proTenants += 1;
-      mrr += monthlyRevenueFor(sub.billingCycle as BillingCycle | null);
+  for (const sub of paidSubs as Subscription[]) {
+    const tier = effectivePlan(sub, null);
+    if (tier === "free") continue; // lapsed/inactive
+    if (tier === "pro") proTenants += 1;
+    if (!sub.lifetime) {
+      mrr += monthlyRevenueFor(tier, sub.billingCycle as BillingCycle | null);
     }
   }
 
@@ -126,6 +139,7 @@ export async function listTenants(limit = 200): Promise<AdminTenantRow[]> {
         name: tenants.name,
         slug: tenants.slug,
         createdAt: tenants.createdAt,
+        trialEndsAt: tenants.trialEndsAt,
         ownerUserId: tenants.ownerUserId,
         ownerName: users.name,
         ownerEmail: users.email,
@@ -164,7 +178,7 @@ export async function listTenants(limit = 200): Promise<AdminTenantRow[]> {
       ownerName: r.ownerName,
       ownerEmail: r.ownerEmail,
       suspended: Boolean(r.banned),
-      plan: effectivePlan(sub),
+      plan: effectivePlan(sub, r.trialEndsAt),
       status: r.status ?? "inactive",
       billingCycle: (r.billingCycle as BillingCycle | null) ?? null,
       staffCount: staffCounts.get(r.id) ?? 0,

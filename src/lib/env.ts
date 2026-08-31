@@ -41,6 +41,8 @@ const serverSchema = z.object({
   RAZORPAY_KEY_ID: z.string().optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
+  RAZORPAY_PLAN_BASIC_MONTHLY: z.string().optional(),
+  RAZORPAY_PLAN_BASIC_YEARLY: z.string().optional(),
   RAZORPAY_PLAN_PRO_MONTHLY: z.string().optional(),
   RAZORPAY_PLAN_PRO_YEARLY: z.string().optional(),
 

@@ -114,9 +114,10 @@ export const reminderStatusEnum = pgEnum("reminder_status", [
   "cancelled",
 ]);
 
-// Billing plan tiers. "free" is the always-usable restricted tier; "pro" unlocks
-// everything and is the paid, auto-recurring plan.
-export const planEnum = pgEnum("plan", ["free", "pro"]);
+// Billing plan tiers. "free" is the post-trial locked tier; "basic" is the paid
+// web-chatbot-only plan; "pro" unlocks WhatsApp too (recurring, or one-time
+// Lifetime). New tenants get full Pro during their trial (tenants.trialEndsAt).
+export const planEnum = pgEnum("plan", ["free", "basic", "pro"]);
 
 export const billingCycleEnum = pgEnum("billing_cycle", ["monthly", "yearly"]);
 
@@ -189,6 +190,10 @@ export const tenants = pgTable(
     }),
     name: text("name").notNull(),
     slug: text("slug").notNull(),
+    /** End of the 7-day free trial; full Pro is granted until this instant. */
+    trialEndsAt: timestamp("trial_ends_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now() + interval '7 days'`),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -571,10 +576,14 @@ export const subscriptions = pgTable(
     billingCycle: billingCycleEnum("billing_cycle"),
     razorpayCustomerId: text("razorpay_customer_id"),
     razorpaySubscriptionId: text("razorpay_subscription_id"),
+    /** One-time Lifetime order's payment id (recurring subs leave this null). */
+    razorpayPaymentId: text("razorpay_payment_id"),
     /** End of the paid period; access is granted through this instant. */
     currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
     /** Owner asked to cancel; access continues until currentPeriodEnd. */
     cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+    /** One-time Lifetime purchase: grants Pro forever, never expires/renews. */
+    lifetime: boolean("lifetime").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

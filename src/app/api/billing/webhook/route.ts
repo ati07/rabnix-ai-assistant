@@ -1,8 +1,13 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { billingEvents } from "@/lib/db/schema";
-import { verifyWebhookSignature, type RazorpaySubscription } from "@/lib/billing/razorpay";
+import {
+  tierForPlanId,
+  verifyWebhookSignature,
+  type RazorpaySubscription,
+} from "@/lib/billing/razorpay";
 import { patchByRazorpayId, upsertSubscription } from "@/lib/billing/subscription";
+import type { PaidTier } from "@/lib/billing/plans";
 
 export const runtime = "nodejs";
 
@@ -79,8 +84,16 @@ async function applySubscription(
   let touchedTenant: string | null = null;
 
   if (tenantId) {
+    // Resolve our tier: prefer the note we stamped at creation, else reverse-map
+    // the Razorpay plan id, else assume Pro (safest — grants, never over-charges).
+    const noteTier = sub.notes?.tier;
+    const tier: PaidTier =
+      noteTier === "basic" || noteTier === "pro"
+        ? noteTier
+        : tierForPlanId(sub.plan_id) ?? "pro";
     await upsertSubscription({
       tenantId,
+      tier,
       sub,
       customerId: sub.customer_id ?? null,
       cancelAtPeriodEnd: cancelling,

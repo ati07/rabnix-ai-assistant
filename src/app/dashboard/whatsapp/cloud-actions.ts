@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { whatsappConnections, type CloudApiConfig } from "@/lib/db/schema";
 import { requireTenant } from "@/lib/tenant";
 import { encryptSecret, isEncryptionConfigured } from "@/lib/crypto";
+import { canUseWhatsApp, WHATSAPP_LOCKED_MESSAGE } from "@/lib/billing/subscription";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -31,6 +32,11 @@ export async function saveCloudApiConfig(
   payload: CloudApiInput,
 ): Promise<ActionResult> {
   const tenant = await requireTenant();
+
+  // WhatsApp is Pro-only (and trial). Basic and locked tenants can't connect it.
+  if (!(await canUseWhatsApp(tenant.id))) {
+    return { ok: false, error: WHATSAPP_LOCKED_MESSAGE };
+  }
 
   if (!isEncryptionConfigured()) {
     return {

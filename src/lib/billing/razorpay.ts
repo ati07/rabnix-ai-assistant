@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "@/lib/env";
-import type { BillingCycle } from "@/lib/billing/plans";
+import type { BillingCycle, PaidTier } from "@/lib/billing/plans";
 
 /**
  * Minimal Razorpay client over raw HTTP (no SDK) — matching the codebase's
@@ -18,11 +18,39 @@ export function isBillingConfigured(): boolean {
   return Boolean(env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET);
 }
 
-/** The configured Razorpay Plan id for the Pro tier at a given cycle, if set. */
-export function proPlanId(cycle: BillingCycle): string | undefined {
-  return cycle === "yearly"
-    ? env.RAZORPAY_PLAN_PRO_YEARLY
-    : env.RAZORPAY_PLAN_PRO_MONTHLY;
+/** The configured Razorpay Plan id for a paid tier at a given cycle, if set. */
+export function planId(tier: PaidTier, cycle: BillingCycle): string | undefined {
+  const map = {
+    basic: {
+      monthly: env.RAZORPAY_PLAN_BASIC_MONTHLY,
+      yearly: env.RAZORPAY_PLAN_BASIC_YEARLY,
+    },
+    pro: {
+      monthly: env.RAZORPAY_PLAN_PRO_MONTHLY,
+      yearly: env.RAZORPAY_PLAN_PRO_YEARLY,
+    },
+  } as const;
+  return map[tier][cycle];
+}
+
+/**
+ * Reverse-map a Razorpay plan id back to our tier (for webhooks, which carry the
+ * plan id but not our tier). Returns undefined if it matches no configured plan.
+ */
+export function tierForPlanId(rzpPlanId: string): PaidTier | undefined {
+  if (
+    rzpPlanId === env.RAZORPAY_PLAN_BASIC_MONTHLY ||
+    rzpPlanId === env.RAZORPAY_PLAN_BASIC_YEARLY
+  ) {
+    return "basic";
+  }
+  if (
+    rzpPlanId === env.RAZORPAY_PLAN_PRO_MONTHLY ||
+    rzpPlanId === env.RAZORPAY_PLAN_PRO_YEARLY
+  ) {
+    return "pro";
+  }
+  return undefined;
 }
 
 function authHeader(): string {
@@ -81,16 +109,26 @@ export interface RazorpaySubscription {
   notes?: Record<string, string>;
 }
 
-/** Idempotently create (or reuse) a Razorpay customer for a tenant. */
+/**
+ * Create a Razorpay customer for a tenant, best-effort. `fail_existing=0` asks
+ * Razorpay to return an existing customer instead of erroring, but that only
+ * dedupes on contact — an email-only re-create still 400s with "Customer
+ * already exists". A customer is optional for a subscription, so we swallow that
+ * case and return null; the caller then creates the subscription without one.
+ */
 export async function createCustomer(input: {
   name: string;
   email: string;
-}): Promise<RazorpayCustomer> {
-  return razorpayFetch<RazorpayCustomer>("/customers", {
-    method: "POST",
-    // fail_existing=0 → return the existing customer instead of erroring.
-    body: { name: input.name, email: input.email, fail_existing: 0 },
-  });
+}): Promise<RazorpayCustomer | null> {
+  try {
+    return await razorpayFetch<RazorpayCustomer>("/customers", {
+      method: "POST",
+      body: { name: input.name, email: input.email, fail_existing: 0 },
+    });
+  } catch (err) {
+    if (err instanceof Error && /already exists/i.test(err.message)) return null;
+    throw err;
+  }
 }
 
 /**
@@ -140,6 +178,73 @@ export async function cancelSubscription(
       body: { cancel_at_cycle_end: opts.atCycleEnd ? 1 : 0 },
     },
   );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Orders (one-time Standard Checkout).                                        */
+/*                                                                             */
+/* Separate from the Subscriptions flow above: this powers a one-off payment   */
+/* (create an order → open Checkout → verify the returned signature) and needs */
+/* only KEY_ID/KEY_SECRET, no Plan ids.                                        */
+/* -------------------------------------------------------------------------- */
+
+export interface RazorpayOrder {
+  id: string;
+  entity: "order";
+  amount: number; // paise
+  amount_paid: number;
+  amount_due: number;
+  currency: string;
+  receipt?: string;
+  status: string;
+  notes?: Record<string, string>;
+}
+
+/** Create a one-time order. `amount` is in paise (Razorpay's minimum is 100). */
+export async function createOrder(input: {
+  amount: number;
+  currency?: string;
+  receipt?: string;
+  notes?: Record<string, string>;
+}): Promise<RazorpayOrder> {
+  return razorpayFetch<RazorpayOrder>("/orders", {
+    method: "POST",
+    body: {
+      amount: input.amount,
+      currency: input.currency ?? "INR",
+      ...(input.receipt ? { receipt: input.receipt } : {}),
+      ...(input.notes ? { notes: input.notes } : {}),
+    },
+  });
+}
+
+/**
+ * Fetch an order back from Razorpay. Used at verify time to re-read the
+ * server-set amount and notes (tenant_id, purpose) so a valid signature on a
+ * tampered/cheap order can't unlock a paid entitlement.
+ */
+export async function fetchOrder(orderId: string): Promise<RazorpayOrder> {
+  return razorpayFetch<RazorpayOrder>(`/orders/${orderId}`, { method: "GET" });
+}
+
+/**
+ * Verify a Checkout payment: HMAC-SHA256(`${orderId}|${paymentId}`, keySecret)
+ * as hex, constant-time compared to the `razorpay_signature` Checkout returns.
+ * Returns false when unconfigured or mismatched — never mark an order paid
+ * unless this is true.
+ */
+export function verifyPaymentSignature(input: {
+  orderId: string;
+  paymentId: string;
+  signature: string | null | undefined;
+}): boolean {
+  if (!env.RAZORPAY_KEY_SECRET || !input.signature) return false;
+  const expected = createHmac("sha256", env.RAZORPAY_KEY_SECRET)
+    .update(`${input.orderId}|${input.paymentId}`)
+    .digest("hex");
+  const a = Buffer.from(expected);
+  const b = Buffer.from(input.signature);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 /**

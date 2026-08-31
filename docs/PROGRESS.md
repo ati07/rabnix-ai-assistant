@@ -12,8 +12,9 @@
 > send on Baileys/templates**, gated by Meta account state (business verification
 > / payment / production number), not by our code.
 
-> **SaaS pivot (as of 2026-08-31):** turning the app into a self-serve, sellable
-> SaaS. Progress by phase:
+> **SaaS pivot (as of 2026-09-01):** turning the app into a self-serve, sellable
+> SaaS. Progress by phase (billing is now a **4-tier** model — trial / Basic / Pro /
+> Lifetime — see Phase 3):
 > - **Phase 0–1 — Custom auth (done).** Clerk removed; auth is now **fully custom,
 >   no third-party library** — email/password on Node `crypto` (scrypt hashing +
 >   opaque SHA-256-hashed session tokens). Tables `users` / `sessions` /
@@ -26,21 +27,36 @@
 >   `requireOwner` in `src/lib/tenant.ts`; `getActiveTenant`/`requireTenant` kept
 >   as wrappers). Accept flow at `/invite/[token]`; Team-page invite manager.
 >   `src/lib/invites.ts`. Migration `drizzle/0001_add_staff_invites.sql`.
-> - **Phase 3 — Razorpay billing (done).** Free + Pro (monthly/yearly) via Razorpay
->   **Subscriptions** (auto-recurring mandates). Config-gated seam like the email /
->   Cloud-API ones — raw HTTP, no SDK (`src/lib/billing/razorpay.ts`); plan catalog
->   + entitlements in `plans.ts`; subscription state/gating helpers in
->   `subscription.ts` (`effectivePlan` reverts a lapsed Pro to Free limits — no total
->   lockout since Free is always usable). `/dashboard/billing` opens Razorpay
->   Checkout; webhook at `/api/billing/webhook` verifies HMAC-SHA256 + dedupes on
->   `billing_events.event_id`. **Hard gate** on entitlements: staff seats
->   (`maxStaff`, counts staff + pending invites) and knowledge docs
->   (`maxKnowledgeDocs`, incl. the PDF-upload route) block on Free; an upgrade banner
->   shows in the dashboard layout for Free / lapsed-Pro tenants. Tables
->   `subscriptions` + `billing_events`; migration `drizzle/0002_add_billing.sql`.
->   Env: `RAZORPAY_KEY_ID/SECRET/WEBHOOK_SECRET`, `RAZORPAY_PLAN_PRO_MONTHLY/YEARLY`,
->   `NEXT_PUBLIC_RAZORPAY_KEY_ID` (all optional — checkout is offered only when set).
->   `maxChannels` gating is deferred (same framework) to avoid disrupting RABNIX.
+> - **Phase 3 — Razorpay billing (done; 4-tier model as of 2026-09-01).** Config-gated
+>   seam like the email / Cloud-API ones — raw HTTP, no SDK (`src/lib/billing/razorpay.ts`);
+>   plan catalog + entitlements in `plans.ts`; state/gating helpers in `subscription.ts`.
+>   **Tiers:**
+>   - **Trial** — every new tenant gets **7 days of full Pro** (both channels), tracked by
+>     `tenants.trial_ends_at`. On expiry, an unpaid tenant **locks to Free** (bot goes
+>     silent) until they pay. `TRIAL_DAYS = 7`.
+>   - **Basic** — ₹999/mo · ₹9,990/yr, **web chatbot only** (`webChat` entitlement; no
+>     WhatsApp). Limits: 1 channel, 3 staff, 25 knowledge docs.
+>   - **Pro** — ₹1,499/mo · ₹14,990/yr, **WhatsApp + chatbot**, unlimited.
+>   - **Lifetime** — ₹20,000 one-time = **Pro forever**. Uses the one-time **Orders**
+>     flow (`/dashboard/pay` → `POST /api/create-order` → `POST /api/verify-payment`):
+>     amount is fixed **server-side** to `LIFETIME_PRICE`, and on return the order is
+>     re-fetched (`fetchOrder`) and its `notes.purpose`/`tenant_id`/amount/`status`
+>     re-checked before granting — so a tampered client can't unlock it cheaply. Stored
+>     as `subscriptions.lifetime = true` + `razorpay_payment_id`, `current_period_end = NULL`.
+>   Recurring tiers (Basic/Pro) use Razorpay **Subscriptions** (auto-recurring mandates);
+>   `planId(tier, cycle)` resolves the env plan id, and the webhook maps `plan_id`→tier
+>   (`tierForPlanId`). `effectivePlan(sub, trialEndsAt)` picks: active paid sub → unexpired
+>   trial (=Pro) → Free. `/dashboard/billing` opens Checkout; webhook at
+>   `/api/billing/webhook` verifies HMAC-SHA256 + dedupes on `billing_events.event_id`.
+>   **Entitlement gates** are the source of truth and are enforced in the reply pipeline
+>   (`src/lib/ai/brain.ts`: `web` needs `webChat`, WhatsApp needs `whatsapp`, both need
+>   `aiAutoReply`), on WhatsApp connect (`whatsapp/cloud-actions.ts` + `canUseWhatsApp`),
+>   and on staff seats / knowledge docs. Tables `subscriptions` (+ `lifetime`,
+>   `razorpay_payment_id`) + `billing_events`; `tenants.trial_ends_at`. Migrations
+>   `drizzle/0002_add_billing.sql` + `drizzle/0003_bitter_iron_monger.sql` (applied).
+>   Env: `RAZORPAY_KEY_ID/SECRET/WEBHOOK_SECRET`, `RAZORPAY_PLAN_{BASIC,PRO}_{MONTHLY,YEARLY}`,
+>   `NEXT_PUBLIC_RAZORPAY_KEY_ID` (checkout offered only when set). Create the 4 plans with
+>   `node scripts/create-razorpay-plans.mjs`.
 > - **Phase 4 — `/admin` platform god-view (done).** Gated by the `platform_admin`
 >   role (real check in `src/app/admin/layout.tsx`; proxy only does the optimistic
 >   cookie gate). Overview at `/admin`: KPI cards (MRR, Pro count, active-7d,

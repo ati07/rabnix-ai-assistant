@@ -7,6 +7,7 @@ import {
   type channelTypeEnum,
 } from "@/lib/db/schema";
 import type { Tenant } from "@/lib/tenant";
+import { getEntitlements } from "@/lib/billing/subscription";
 import { makeToolExecutor } from "./actions";
 import { buildSystemPrompt } from "./prompt";
 import { getProvider } from "./providers";
@@ -97,6 +98,15 @@ export async function handleIncomingMessage(
 
   // No config or auto-reply disabled → record the message, stay silent.
   if (!config || !config.autoReplyEnabled) {
+    return { reply: null, conversationId: conversation.id, toolCalls: [] };
+  }
+
+  // Plan gate: entitlements are the source of truth for what this tenant may do
+  // right now. A locked (post-trial, unpaid) tenant's assistant goes quiet;
+  // Basic answers web chat only; Pro (and the trial) answer every channel.
+  const ent = await getEntitlements(tenant.id);
+  const channelAllowed = channel === "web" ? ent.webChat : ent.whatsapp;
+  if (!ent.aiAutoReply || !channelAllowed) {
     return { reply: null, conversationId: conversation.id, toolCalls: [] };
   }
 

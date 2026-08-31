@@ -2,15 +2,32 @@
  * Plan catalog + entitlements. Pure and isomorphic (no server-only imports) so
  * both the billing UI and server gating read the same source of truth.
  *
- * Two tiers: `free` (always usable, restricted) and `pro` (paid, unlocks
- * everything). Prices here are for display only — the authoritative amount lives
- * in the Razorpay Plan; edit both together. Amounts are in whole rupees (INR).
+ * Tiers:
+ *   free  — the 7-day trial grants full Pro; once it lapses (and nothing is
+ *           paid) the tenant falls to these locked entitlements.
+ *   basic — paid, web chatbot only (no WhatsApp).
+ *   pro   — paid, WhatsApp + web chatbot, unlimited.
+ *
+ * A one-time Lifetime purchase (see {@link LIFETIME_PRICE}) grants Pro
+ * entitlements forever — it isn't a separate tier, it's a Pro subscription row
+ * flagged `lifetime` that never expires.
+ *
+ * Prices here are for display only — the authoritative recurring amount lives in
+ * the Razorpay Plan; edit both together. Amounts are in whole rupees (INR).
  */
 
-export type PlanId = "free" | "pro";
+export type PlanId = "free" | "basic" | "pro";
 export type BillingCycle = "monthly" | "yearly";
+/** The tiers a customer can actually subscribe to (free is the trial fallback). */
+export type PaidTier = "basic" | "pro";
 
-/** Hard limits enforced per plan. `Infinity` = unlimited. */
+/** Length of the free trial, in days. New tenants get full Pro for this long. */
+export const TRIAL_DAYS = 7;
+
+/** One-time price (whole rupees) that unlocks Pro forever. */
+export const LIFETIME_PRICE = 20000;
+
+/** Hard limits + feature flags enforced per plan. `Infinity` = unlimited. */
 export interface Entitlements {
   /** Max connected channels (WhatsApp connections + web chat widget). */
   maxChannels: number;
@@ -20,6 +37,10 @@ export interface Entitlements {
   maxKnowledgeDocs: number;
   /** Whether the AI may auto-reply to customers. */
   aiAutoReply: boolean;
+  /** May connect a WhatsApp channel (Cloud API / Baileys). Pro-only. */
+  whatsapp: boolean;
+  /** May use the embeddable web chat widget. Basic and Pro. */
+  webChat: boolean;
 }
 
 export interface PlanDef {
@@ -36,44 +57,70 @@ export interface PlanDef {
 export const PLANS: Record<PlanId, PlanDef> = {
   free: {
     id: "free",
-    name: "Free",
-    tagline: "Try the assistant on a single channel.",
+    name: "Free trial",
+    tagline: "7 days of full Pro — then pick a plan to keep going.",
     price: null,
+    // Locked entitlements once the trial lapses and nothing is paid. During the
+    // trial the tenant is *effectively* Pro (see effectivePlan), so these only
+    // ever apply after expiry: the assistant goes quiet until they subscribe.
     entitlements: {
-      maxChannels: 1,
-      maxStaff: 2,
-      maxKnowledgeDocs: 3,
-      aiAutoReply: true,
+      maxChannels: 0,
+      maxStaff: 1,
+      maxKnowledgeDocs: 0,
+      aiAutoReply: false,
+      whatsapp: false,
+      webChat: false,
     },
     features: [
-      "1 channel (WhatsApp or web chat)",
-      "Up to 2 team members",
-      "Up to 3 knowledge documents",
+      "Full Pro access for 7 days",
+      "WhatsApp + web chatbot",
+      "No card required to start",
+    ],
+  },
+  basic: {
+    id: "basic",
+    name: "Basic",
+    tagline: "Web chatbot for your site.",
+    price: { monthly: 999, yearly: 9990 },
+    entitlements: {
+      maxChannels: 1,
+      maxStaff: 3,
+      maxKnowledgeDocs: 25,
+      aiAutoReply: true,
+      whatsapp: false,
+      webChat: true,
+    },
+    features: [
+      "Embeddable web chatbot",
       "AI auto-replies",
+      "Up to 3 team members",
+      "Up to 25 knowledge documents",
     ],
   },
   pro: {
     id: "pro",
     name: "Pro",
-    tagline: "Everything, unlimited, for a real business.",
-    price: { monthly: 999, yearly: 9990 },
+    tagline: "WhatsApp + web chatbot, unlimited.",
+    price: { monthly: 1499, yearly: 14990 },
     entitlements: {
       maxChannels: Infinity,
       maxStaff: Infinity,
       maxKnowledgeDocs: Infinity,
       aiAutoReply: true,
+      whatsapp: true,
+      webChat: true,
     },
     features: [
-      "Unlimited channels",
-      "Unlimited team members",
+      "Everything in Basic",
+      "WhatsApp channel",
+      "Unlimited channels & team members",
       "Unlimited knowledge documents",
-      "AI auto-replies",
       "Priority support",
     ],
   },
 };
 
-/** Entitlements for a plan id (defaults to Free for anything unknown). */
+/** Entitlements for a plan id (defaults to Free/locked for anything unknown). */
 export function entitlementsFor(plan: PlanId | string | null | undefined): Entitlements {
   return (plan && PLANS[plan as PlanId]?.entitlements) || PLANS.free.entitlements;
 }

@@ -9,7 +9,7 @@ import {
   createSubscription,
   fetchSubscription,
   isBillingConfigured,
-  proPlanId,
+  planId,
 } from "@/lib/billing/razorpay";
 import {
   getSubscription,
@@ -22,27 +22,30 @@ export type ActionResult<T = unknown> =
   | { ok: false; error: string };
 
 const checkoutSchema = z.object({
+  tier: z.enum(["basic", "pro"]),
   cycle: z.enum(["monthly", "yearly"]),
 });
 
 /**
- * Begin a Pro subscription: create/reuse a Razorpay customer, create the
- * subscription against the configured Plan, and persist a `created` row. Returns
- * the subscription id for the browser to open Razorpay Checkout with. Owner-only.
+ * Begin a paid subscription (Basic or Pro): create/reuse a Razorpay customer,
+ * create the subscription against the configured Plan, and persist a `created`
+ * row. Returns the subscription id for the browser to open Razorpay Checkout
+ * with. Owner-only.
  */
-export async function startProCheckout(
+export async function startCheckout(
   input: z.input<typeof checkoutSchema>,
 ): Promise<ActionResult<{ subscriptionId: string; keyId: string }>> {
   const parsed = checkoutSchema.safeParse(input);
   if (!parsed.success) {
-    return { ok: false, error: "Pick a monthly or yearly plan." };
+    return { ok: false, error: "Pick a Basic or Pro plan billed monthly or yearly." };
   }
   if (!isBillingConfigured()) {
     return { ok: false, error: "Billing isn't configured yet. Contact support." };
   }
-  const planId = proPlanId(parsed.data.cycle);
+  const { tier, cycle } = parsed.data;
+  const plan = planId(tier, cycle);
   const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
-  if (!planId || !keyId) {
+  if (!plan || !keyId) {
     return { ok: false, error: "This plan isn't available yet. Contact support." };
   }
 
@@ -50,22 +53,24 @@ export async function startProCheckout(
 
   try {
     const existing = await getSubscription(tenant.id);
-    // Reuse the Razorpay customer if we've made one for this tenant before.
+    // Reuse the Razorpay customer if we've made one for this tenant before;
+    // otherwise create one (best-effort — may be null if it already exists).
     const customerId =
       existing?.razorpayCustomerId ??
-      (await createCustomer({ name: user.name, email: user.email })).id;
+      (await createCustomer({ name: user.name, email: user.email }))?.id;
 
     const sub = await createSubscription({
-      planId,
-      cycle: parsed.data.cycle,
+      planId: plan,
+      cycle,
       customerId,
-      notes: { tenant_id: tenant.id },
+      notes: { tenant_id: tenant.id, tier },
     });
 
     await upsertSubscription({
       tenantId: tenant.id,
+      tier,
       sub,
-      cycle: parsed.data.cycle,
+      cycle,
       customerId,
     });
 

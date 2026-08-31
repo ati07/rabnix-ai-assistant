@@ -1,6 +1,6 @@
 import { requireMembership } from "@/lib/tenant";
 import { getBillingState } from "@/lib/billing/subscription";
-import { isBillingConfigured, proPlanId } from "@/lib/billing/razorpay";
+import { isBillingConfigured, planId } from "@/lib/billing/razorpay";
 import {
   BillingManager,
   type BillingView,
@@ -9,25 +9,32 @@ import {
 export default async function BillingPage() {
   const { tenant, role } = await requireMembership();
   const state = await getBillingState(tenant.id);
+  const isOwner = role === "owner";
 
-  // Owners manage billing; a monthly or yearly Pro plan must be configured for
-  // checkout to be offered at all.
-  const canCheckout =
-    role === "owner" &&
-    isBillingConfigured() &&
-    Boolean(proPlanId("monthly") || proPlanId("yearly"));
+  // Which tier/cycle combos are actually purchasable (their Razorpay Plan id is
+  // configured). Checkout is offered only to owners when billing is wired up.
+  const available = {
+    basicMonthly: Boolean(planId("basic", "monthly")),
+    basicYearly: Boolean(planId("basic", "yearly")),
+    proMonthly: Boolean(planId("pro", "monthly")),
+    proYearly: Boolean(planId("pro", "yearly")),
+  };
+  const canCheckout = isOwner && isBillingConfigured();
 
   const view: BillingView = {
-    isOwner: role === "owner",
+    isOwner,
     canCheckout,
-    monthlyAvailable: Boolean(proPlanId("monthly")),
-    yearlyAvailable: Boolean(proPlanId("yearly")),
+    available,
     plan: state.plan,
     effectivePlan: state.effectivePlan,
     status: state.status,
     billingCycle: state.billingCycle,
     currentPeriodEnd: state.currentPeriodEnd?.toISOString() ?? null,
     cancelAtPeriodEnd: state.cancelAtPeriodEnd,
+    subscribed: state.subscribed,
+    lifetime: state.lifetime,
+    trialing: state.trialing,
+    trialEndsAt: state.trialEndsAt?.toISOString() ?? null,
   };
 
   return (
@@ -35,8 +42,8 @@ export default async function BillingPage() {
       <div>
         <h1 className="text-2xl font-semibold">Billing</h1>
         <p className="mt-1 text-muted-foreground">
-          Manage your plan. Pro unlocks unlimited channels, team members, and
-          knowledge — billed monthly or yearly and auto-renewed.
+          Start with a 7-day free trial of Pro. Then choose Basic (web chatbot),
+          Pro (WhatsApp + chatbot), or pay once for Lifetime.
         </p>
       </div>
       <BillingManager view={view} />
