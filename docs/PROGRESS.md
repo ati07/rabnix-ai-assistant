@@ -12,6 +12,29 @@
 > send on Baileys/templates**, gated by Meta account state (business verification
 > / payment / production number), not by our code.
 
+> **SaaS pivot (as of 2026-08-31):** turning the app into a self-serve, sellable
+> SaaS. Progress by phase:
+> - **Phase 0–1 — Custom auth (done).** Clerk removed; auth is now **fully custom,
+>   no third-party library** — email/password on Node `crypto` (scrypt hashing +
+>   opaque SHA-256-hashed session tokens). Tables `users` / `sessions` /
+>   `password_reset_tokens`; see `src/lib/auth.ts`, `auth-actions.ts`,
+>   `auth-cookie.ts`. `tenants.ownerUserId` and `staff.userId` link to `users`.
+>   ⚠️ **The Clerk references elsewhere in this doc are stale.**
+> - **Phase 2 — Self-serve team invites + membership (done).** Owners invite staff
+>   by email (`staff_invites`, single-use hashed token, 7-day expiry). Tenancy is
+>   now owner/staff **membership** (`getActiveMembership` / `requireMembership` /
+>   `requireOwner` in `src/lib/tenant.ts`; `getActiveTenant`/`requireTenant` kept
+>   as wrappers). Accept flow at `/invite/[token]`; Team-page invite manager.
+>   `src/lib/invites.ts`. Migration `drizzle/0001_add_staff_invites.sql`.
+> - **Phase 3 — Razorpay billing (next).** Plans, `/dashboard/billing`, webhook,
+>   subscription tables, access gating. Env: `RAZORPAY_KEY_ID/SECRET/WEBHOOK_SECRET`.
+> - **Phase 4 — `/admin` platform god-view (pending).** `platform_admin` role:
+>   list/suspend/impersonate clients, activity, MRR.
+>
+> **Data note:** the existing RABNIX tenant has `owner_user_id = NULL`; after the
+> platform admin signs up, re-claim it (`UPDATE tenants SET owner_user_id = …` +
+> `UPDATE users SET role = 'platform_admin'`).
+
 ---
 
 ## 1. What this app is
