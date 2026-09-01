@@ -86,6 +86,7 @@ export default async function CustomerDetailPage({
           email: customer.email ?? "",
           tags: customer.tags ?? [],
           notes: customer.notes ?? "",
+          leadStatus: customer.leadStatus,
         }}
       />
 

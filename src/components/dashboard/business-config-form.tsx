@@ -37,6 +37,21 @@ type DayKey = (typeof DAYS)[number][0];
 type Service = { name: string; description: string; price: string; duration: string };
 type Faq = { q: string; a: string };
 type DayHours = { open: string; close: string; closed: boolean };
+type FollowupStep = { afterHours: number; message: string };
+type LeadFollowups = { enabled: boolean; steps: FollowupStep[] };
+
+const DEFAULT_FOLLOWUP_STEPS: FollowupStep[] = [
+  {
+    afterHours: 24,
+    message:
+      "Hi! Just checking in — did you still want help with what we discussed? Happy to answer any questions.",
+  },
+  {
+    afterHours: 72,
+    message:
+      "Following up one more time in case this got buried. Let me know if there's anything I can do for you!",
+  },
+];
 
 export interface BusinessConfigInitial {
   businessType: BusinessConfigInput["businessType"];
@@ -52,6 +67,8 @@ export interface BusinessConfigInitial {
   llmProvider: BusinessConfigInput["llmProvider"];
   llmModel: string;
   autoReplyEnabled: boolean;
+  leadCaptureEnabled: boolean;
+  leadFollowups: LeadFollowups;
 }
 
 function initialHours(hours: Record<string, [string, string][]>): Record<DayKey, DayHours> {
@@ -80,6 +97,15 @@ export function BusinessConfigForm({ initial }: { initial: BusinessConfigInitial
   const [llmProvider, setLlmProvider] = useState(initial.llmProvider);
   const [llmModel, setLlmModel] = useState(initial.llmModel);
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(initial.autoReplyEnabled);
+  const [leadCaptureEnabled, setLeadCaptureEnabled] = useState(
+    initial.leadCaptureEnabled,
+  );
+  const [followupsEnabled, setFollowupsEnabled] = useState(
+    initial.leadFollowups.enabled,
+  );
+  const [followupSteps, setFollowupSteps] = useState<FollowupStep[]>(
+    initial.leadFollowups.steps,
+  );
   const [hours, setHours] = useState(() => initialHours(initial.hours));
   const [services, setServices] = useState<Service[]>(initial.services);
   const [faqs, setFaqs] = useState<Faq[]>(initial.faqs);
@@ -119,6 +145,16 @@ export function BusinessConfigForm({ initial }: { initial: BusinessConfigInitial
       llmProvider,
       llmModel,
       autoReplyEnabled,
+      leadCaptureEnabled,
+      leadFollowups: {
+        enabled: followupsEnabled,
+        steps: followupSteps
+          .filter((s) => s.message.trim())
+          .map((s) => ({
+            afterHours: Number.isFinite(s.afterHours) ? s.afterHours : 0,
+            message: s.message.trim(),
+          })),
+      },
     };
 
     startTransition(async () => {
@@ -383,6 +419,137 @@ export function BusinessConfigForm({ initial }: { initial: BusinessConfigInitial
             rows={4}
             placeholder="Cancellation, refund, and other policies the assistant should honor."
           />
+        </CardContent>
+      </Card>
+
+      {/* Leads */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Leads &amp; follow-ups</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between rounded-lg border p-3">
+            <div className="pr-4">
+              <p className="font-medium">Capture contact details</p>
+              <p className="text-sm text-muted-foreground">
+                Let the assistant naturally ask new customers for their name and
+                email early in a chat, so you can follow up later. It always
+                respects a decline.
+              </p>
+            </div>
+            <Switch
+              checked={leadCaptureEnabled}
+              onCheckedChange={setLeadCaptureEnabled}
+            />
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg border p-3">
+            <div className="pr-4">
+              <p className="font-medium">Automated follow-ups</p>
+              <p className="text-sm text-muted-foreground">
+                Nurture quiet leads on a schedule until they reply or you mark
+                them won/lost. Day-later follow-ups deliver by{" "}
+                <strong>email</strong> (WhatsApp can only be messaged inside the
+                24-hour window), so capturing an email matters.
+              </p>
+            </div>
+            <Switch
+              checked={followupsEnabled}
+              onCheckedChange={setFollowupsEnabled}
+            />
+          </div>
+
+          {followupsEnabled && (
+            <div className="space-y-4">
+              {followupSteps.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  No follow-up steps yet — add one below or start from a
+                  suggested sequence.
+                </p>
+              )}
+              {followupSteps.map((step, i) => (
+                <div key={i} className="space-y-3 rounded-lg border p-3">
+                  <div className="flex items-center gap-2">
+                    <Label
+                      htmlFor={`followup-hours-${i}`}
+                      className="text-sm font-medium"
+                    >
+                      Send after
+                    </Label>
+                    <Input
+                      id={`followup-hours-${i}`}
+                      type="number"
+                      min={0}
+                      max={8760}
+                      value={String(step.afterHours)}
+                      onChange={(e) =>
+                        setFollowupSteps((arr) =>
+                          arr.map((x, j) =>
+                            j === i
+                              ? { ...x, afterHours: Number(e.target.value) }
+                              : x,
+                          ),
+                        )
+                      }
+                      className="w-24"
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      hours (from when the lead was captured)
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="ml-auto"
+                      onClick={() =>
+                        setFollowupSteps((arr) => arr.filter((_, j) => j !== i))
+                      }
+                      aria-label="Remove follow-up step"
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
+                  <Textarea
+                    value={step.message}
+                    onChange={(e) =>
+                      setFollowupSteps((arr) =>
+                        arr.map((x, j) =>
+                          j === i ? { ...x, message: e.target.value } : x,
+                        ),
+                      )
+                    }
+                    rows={2}
+                    placeholder="Message to send…"
+                  />
+                </div>
+              ))}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setFollowupSteps((arr) => [
+                      ...arr,
+                      { afterHours: 24, message: "" },
+                    ])
+                  }
+                >
+                  <Plus className="size-4" /> Add step
+                </Button>
+                {followupSteps.length === 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setFollowupSteps(DEFAULT_FOLLOWUP_STEPS)}
+                  >
+                    Use suggested sequence (+24h, +72h)
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

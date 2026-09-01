@@ -3,11 +3,13 @@ import { db } from "@/lib/db";
 import {
   businessConfig,
   conversations,
+  customers,
   messages,
   type channelTypeEnum,
 } from "@/lib/db/schema";
 import type { Tenant } from "@/lib/tenant";
 import { getEntitlements } from "@/lib/billing/subscription";
+import { cancelLeadFollowups } from "@/lib/leads/followups";
 import { makeToolExecutor } from "./actions";
 import { buildSystemPrompt } from "./prompt";
 import { getProvider } from "./providers";
@@ -89,6 +91,21 @@ export async function handleIncomingMessage(
   }
 
   await touchConversation(conversation.id);
+
+  // The lead just messaged us — they're engaged, so stop any automated
+  // follow-up nudges still queued for them. (Runs before the model turn, so if
+  // this message shares fresh details the sequence can restart cleanly.)
+  if (config?.leadFollowups?.enabled) {
+    const existingCustomer = await db.query.customers.findFirst({
+      where: and(
+        eq(customers.tenantId, tenant.id),
+        eq(customers.phone, incoming.from),
+      ),
+    });
+    if (existingCustomer) {
+      await cancelLeadFollowups(tenant.id, existingCustomer.id);
+    }
+  }
 
   // A human agent has taken over (or the thread is closed): record the inbound
   // message so staff see it, but the AI stays silent until it's handed back.

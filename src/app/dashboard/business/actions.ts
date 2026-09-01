@@ -48,6 +48,21 @@ const configSchema = z.object({
   llmProvider: z.enum(["gemini", "anthropic", "openai"]),
   llmModel: z.string().trim().max(120).optional().default(""),
   autoReplyEnabled: z.boolean(),
+  leadCaptureEnabled: z.boolean(),
+  leadFollowups: z
+    .object({
+      enabled: z.boolean(),
+      steps: z
+        .array(
+          z.object({
+            afterHours: z.number().min(0).max(8760),
+            message: z.string().trim().min(1).max(2000),
+          }),
+        )
+        .max(10)
+        .default([]),
+    })
+    .default({ enabled: false, steps: [] }),
 });
 
 export type BusinessConfigInput = z.input<typeof configSchema>;
@@ -87,6 +102,8 @@ export async function saveBusinessConfig(
       llmProvider: data.llmProvider,
       llmModel: data.llmModel || null,
       autoReplyEnabled: data.autoReplyEnabled,
+      leadCaptureEnabled: data.leadCaptureEnabled,
+      leadFollowups: data.leadFollowups,
       updatedAt: new Date(),
     })
     .where(eq(businessConfig.tenantId, tenant.id));

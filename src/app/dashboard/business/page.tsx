@@ -33,6 +33,8 @@ export default async function BusinessPage() {
     llmProvider: config?.llmProvider ?? "gemini",
     llmModel: config?.llmModel ?? "",
     autoReplyEnabled: config?.autoReplyEnabled ?? true,
+    leadCaptureEnabled: config?.leadCaptureEnabled ?? true,
+    leadFollowups: config?.leadFollowups ?? { enabled: false, steps: [] },
   };
 
   return (

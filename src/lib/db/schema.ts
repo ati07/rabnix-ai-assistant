@@ -85,6 +85,16 @@ export const llmProviderEnum = pgEnum("llm_provider", [
 
 export const staffRoleEnum = pgEnum("staff_role", ["owner", "staff"]);
 
+// Lead lifecycle for a customer record. Every WhatsApp/web chatter starts as a
+// "new" lead; owners (or the won/lost automation) move them along the funnel.
+export const leadStatusEnum = pgEnum("lead_status", [
+  "new",
+  "contacted",
+  "qualified",
+  "won",
+  "lost",
+]);
+
 export const appointmentStatusEnum = pgEnum("appointment_status", [
   "scheduled",
   "confirmed",
@@ -232,6 +242,13 @@ export const businessConfig = pgTable(
     llmModel: text("llm_model"),
     /** Turn the AI auto-reply on/off without disconnecting WhatsApp. */
     autoReplyEnabled: boolean("auto_reply_enabled").notNull().default(true),
+    /** Let the assistant proactively ask visitors for name / contact / email. */
+    leadCaptureEnabled: boolean("lead_capture_enabled").notNull().default(true),
+    /** Automated follow-up sequence for captured leads. */
+    leadFollowups: jsonb("lead_followups")
+      .$type<LeadFollowupConfig>()
+      .notNull()
+      .default({ enabled: false, steps: [] }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("business_config_tenant_id_idx").on(t.tenantId)],
@@ -244,6 +261,18 @@ export type ServiceItem = {
   duration?: string;
 };
 export type FaqItem = { q: string; a: string };
+
+/** One nudge in an automated lead follow-up sequence. */
+export type LeadFollowupStep = {
+  /** Hours after the lead is captured to send this nudge. */
+  afterHours: number;
+  /** Message body sent to the lead (email or WhatsApp). */
+  message: string;
+};
+export type LeadFollowupConfig = {
+  enabled: boolean;
+  steps: LeadFollowupStep[];
+};
 
 // ── WhatsApp connections ─────────────────────────────────────────────────
 export const whatsappConnections = pgTable(
@@ -419,6 +448,12 @@ export const customers = pgTable(
     email: text("email"),
     tags: jsonb("tags").$type<string[]>().default([]),
     notes: text("notes"),
+    /** Sales-funnel stage for this contact. */
+    leadStatus: leadStatusEnum("lead_status").notNull().default("new"),
+    /** Where this lead first came from (e.g. "whatsapp" | "web"). */
+    source: text("source"),
+    /** When the lead was marked "won". */
+    convertedAt: timestamp("converted_at", { withTimezone: true }),
     /** Arbitrary owner-defined fields. */
     customFields: jsonb("custom_fields").$type<Record<string, unknown>>().default({}),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
@@ -520,6 +555,12 @@ export const reminders = pgTable(
     appointmentId: uuid("appointment_id").references(() => appointments.id, {
       onDelete: "cascade",
     }),
+    /** Customer this reminder belongs to (used to cancel lead follow-ups). */
+    customerId: uuid("customer_id").references(() => customers.id, {
+      onDelete: "cascade",
+    }),
+    /** What produced this row: "appointment" reminder or "lead_followup". */
+    kind: text("kind").notNull().default("appointment"),
     target: reminderTargetEnum("target").notNull(),
     channel: notifyChannelEnum("channel").notNull().default("whatsapp"),
     /** When the scheduler should send this. */
@@ -533,6 +574,8 @@ export const reminders = pgTable(
     // Scheduler polls: due + pending.
     index("reminders_due_idx").on(t.status, t.sendAt),
     index("reminders_tenant_idx").on(t.tenantId),
+    // Cancel-lookup for lead follow-ups by customer.
+    index("reminders_customer_idx").on(t.customerId, t.status),
   ],
 );
 

@@ -51,12 +51,17 @@ export const tools: LlmToolSpec[] = [
   {
     name: "update_customer",
     description:
-      "Save or correct details about the current customer in the CRM. Call this when the customer tells you their name, email, or another lasting fact worth remembering for next time.",
+      "Save or correct details about the current customer in the CRM. Call this AS SOON AS the customer shares their name, email, phone number, or another lasting fact worth remembering — don't wait until the end of the chat.",
     inputSchema: {
       type: "object",
       properties: {
         name: { type: "string" },
         email: { type: "string" },
+        phone: {
+          type: "string",
+          description:
+            "A contact phone number the customer shares (useful for website visitors, who have no WhatsApp number on file).",
+        },
         notes: {
           type: "string",
           description: "Freeform note to append about this customer.",

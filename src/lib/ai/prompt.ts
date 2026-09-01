@@ -82,6 +82,10 @@ function renderStable(config: BusinessConfig): string {
     s.push(`# Policies\n${config.policies.trim()}`);
   }
 
+  if (config.leadCaptureEnabled) {
+    s.push(LEAD_CAPTURE_RULES);
+  }
+
   s.push(BEHAVIOR_RULES);
 
   return s.join("\n\n");
@@ -141,6 +145,18 @@ function renderChannelGuidance(channel: PromptContext["channel"]): string {
     "You are chatting with the customer over WhatsApp, so you can send them WhatsApp reminders and follow-ups at their number.",
   ].join("\n");
 }
+
+const LEAD_CAPTURE_RULES = `# Collecting the customer's details
+Early in a new conversation — once you've greeted them and understood what they
+need — naturally ask for the customer's name and best contact so the team can
+help and follow up. Weave it into the conversation; don't interrogate.
+- Ask for their name and email. On the website chat you have NO phone number for
+  them, so their email is the only way to follow up later — prioritise it there.
+- Briefly say why (e.g. "so we can send you the details / follow up"), and ask at
+  most once or twice. If they'd rather not share, respect that and carry on
+  helping — never withhold help to pressure them.
+- The moment they give a name, email, or phone number, save it with
+  \`update_customer\` (name, email, phone).`;
 
 const BEHAVIOR_RULES = `# How to behave
 - Be concise and friendly. Keep replies short — a few sentences, not essays.

@@ -17,6 +17,8 @@ export default async function CustomersPage() {
       name: customers.name,
       email: customers.email,
       tags: customers.tags,
+      leadStatus: customers.leadStatus,
+      source: customers.source,
       lastSeenAt: customers.lastSeenAt,
       createdAt: customers.createdAt,
       appointmentCount: count(appointments.id),
@@ -35,16 +37,19 @@ export default async function CustomersPage() {
     name: r.name,
     email: r.email,
     tags: r.tags ?? [],
+    leadStatus: r.leadStatus,
+    source: r.source,
     appointmentCount: Number(r.appointmentCount),
     lastSeenAt: r.lastSeenAt?.toISOString() ?? null,
   }));
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="text-2xl font-semibold">Customers</h1>
+      <h1 className="text-2xl font-semibold">Customers &amp; leads</h1>
       <p className="mt-1 mb-6 text-muted-foreground">
-        Everyone who has messaged you. The assistant builds these records as it
-        talks to people.
+        Everyone who has messaged you across WhatsApp and web chat. The assistant
+        builds these records as it talks to people — filter by stage, or export
+        them all to a spreadsheet.
       </p>
       <CustomersList customers={list} />
     </div>

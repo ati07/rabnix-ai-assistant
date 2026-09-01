@@ -19,6 +19,7 @@ import {
   weekdayKeyInZone,
   zonedTimeToUtc,
 } from "@/lib/time";
+import { scheduleLeadFollowups } from "@/lib/leads/followups";
 import type { LlmToolResult, ToolExecutor, ToolInvocation } from "./provider";
 import { searchKnowledge } from "./rag";
 
@@ -150,14 +151,25 @@ async function doUpdateCustomer(
   const c = await ensureCustomer(ctx);
   const name = optionalString(input.name);
   const email = optionalString(input.email);
+  const phone = optionalString(input.phone);
   const note = optionalString(input.notes);
 
   const set: Partial<typeof customers.$inferInsert> = {};
   if (name) set.name = name;
   if (email) set.email = email;
+  // The `phone` column is this customer's identity/dedup key (their WhatsApp
+  // number, or a web session id) — never overwrite it. A phone the visitor
+  // volunteers is a contact detail, so stash it in customFields instead.
+  if (phone) {
+    set.customFields = { ...(c.customFields ?? {}), contactPhone: phone };
+  }
   if (note) {
     const stamp = new Date().toISOString().slice(0, 10);
     set.notes = c.notes ? `${c.notes}\n[${stamp}] ${note}` : `[${stamp}] ${note}`;
+  }
+  // Record where this lead first came from (once).
+  if (!c.source && ctx.channel) {
+    set.source = ctx.channel === "web" ? "web" : "whatsapp";
   }
 
   if (Object.keys(set).length === 0) {
@@ -165,6 +177,28 @@ async function doUpdateCustomer(
   }
 
   await db.update(customers).set(set).where(eq(customers.id, c.id));
+
+  // Capturing a name/email is the "lead captured" signal — kick off the tenant's
+  // automated follow-up sequence (idempotent; no-op if disabled/unreachable).
+  if ((name || email) && ctx.config) {
+    try {
+      const updated = await db.query.customers.findFirst({
+        where: eq(customers.id, c.id),
+      });
+      if (updated) {
+        await scheduleLeadFollowups({
+          tenantId: ctx.tenantId,
+          customer: updated,
+          channel: ctx.channel,
+          config: ctx.config,
+        });
+      }
+    } catch (err) {
+      // Never fail the CRM save because follow-up scheduling hiccuped.
+      console.error("[update_customer] scheduling follow-ups failed:", err);
+    }
+  }
+
   return { content: "Customer details saved." };
 }
 

@@ -13,6 +13,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { LEAD_STATUSES, type LeadStatus } from "@/lib/leads/status";
 
 export interface CustomerProfileData {
   id: string;
@@ -21,6 +29,7 @@ export interface CustomerProfileData {
   email: string;
   tags: string[];
   notes: string;
+  leadStatus: LeadStatus;
 }
 
 export function CustomerProfile({ customer }: { customer: CustomerProfileData }) {
@@ -32,6 +41,7 @@ export function CustomerProfile({ customer }: { customer: CustomerProfileData })
   const [email, setEmail] = useState(customer.email);
   const [tags, setTags] = useState(customer.tags.join(", "));
   const [notes, setNotes] = useState(customer.notes);
+  const [leadStatus, setLeadStatus] = useState<LeadStatus>(customer.leadStatus);
 
   function save() {
     startSave(async () => {
@@ -40,6 +50,7 @@ export function CustomerProfile({ customer }: { customer: CustomerProfileData })
         email,
         tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
         notes,
+        leadStatus,
       });
       if (res.ok) {
         toast.success("Customer saved");
@@ -107,6 +118,27 @@ export function CustomerProfile({ customer }: { customer: CustomerProfileData })
               onChange={(e) => setTags(e.target.value)}
               placeholder="vip, returning (comma-separated)"
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="c-status">Lead status</Label>
+            <Select
+              value={leadStatus}
+              onValueChange={(v) => setLeadStatus(v as LeadStatus)}
+            >
+              <SelectTrigger id="c-status" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {LEAD_STATUSES.map((s) => (
+                  <SelectItem key={s.value} value={s.value}>
+                    {s.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Marking a lead Won or Lost stops any pending follow-ups.
+            </p>
           </div>
         </div>
         <div className="space-y-2">
