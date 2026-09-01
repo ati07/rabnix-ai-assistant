@@ -1,6 +1,6 @@
 import { count, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { documents, subscriptions, tenants } from "@/lib/db/schema";
+import { documents, subscriptions, tenants, users } from "@/lib/db/schema";
 import {
   entitlementsFor,
   type BillingCycle,
@@ -71,12 +71,31 @@ async function getTrialEndsAt(tenantId: string): Promise<Date | null> {
   return t?.trialEndsAt ?? null;
 }
 
+/**
+ * Whether the tenant's OWNER is a platform admin. We operate the platform, so we
+ * don't charge ourselves — an admin's own workspace gets Pro comped for free.
+ *
+ * Keyed on the owner's role (not the current viewer) so it's stable for the
+ * owner's staff too, and — crucially — does NOT leak into a tenant an admin is
+ * merely impersonating (that tenant's owner isn't an admin).
+ */
+export async function tenantOwnerIsAdmin(tenantId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ role: users.role })
+    .from(tenants)
+    .innerJoin(users, eq(users.id, tenants.ownerUserId))
+    .where(eq(tenants.id, tenantId));
+  return row?.role === "platform_admin";
+}
+
 /** Entitlements for the tenant's effective plan. */
 export async function getEntitlements(tenantId: string): Promise<Entitlements> {
-  const [sub, trialEndsAt] = await Promise.all([
+  const [sub, trialEndsAt, adminComp] = await Promise.all([
     getSubscription(tenantId),
     getTrialEndsAt(tenantId),
+    tenantOwnerIsAdmin(tenantId),
   ]);
+  if (adminComp) return entitlementsFor("pro");
   return entitlementsFor(effectivePlan(sub, trialEndsAt));
 }
 
@@ -94,10 +113,12 @@ export const WHATSAPP_LOCKED_MESSAGE =
 
 /** Convenience: is the tenant on an active Pro plan (or Pro trial) right now? */
 export async function isProActive(tenantId: string): Promise<boolean> {
-  const [sub, trialEndsAt] = await Promise.all([
+  const [sub, trialEndsAt, adminComp] = await Promise.all([
     getSubscription(tenantId),
     getTrialEndsAt(tenantId),
+    tenantOwnerIsAdmin(tenantId),
   ]);
+  if (adminComp) return true;
   return effectivePlan(sub, trialEndsAt) === "pro";
 }
 
@@ -130,6 +151,8 @@ export interface BillingState {
   subscribed: boolean;
   /** One-time Lifetime purchase — Pro forever, no renewal/cancel. */
   lifetime: boolean;
+  /** Owner is a platform admin — Pro is comped, no purchase required. */
+  adminComp: boolean;
   /** Inside the 7-day free trial right now. */
   trialing: boolean;
   /** Trial deadline, whether or not it has passed. */
@@ -138,13 +161,15 @@ export interface BillingState {
 
 /** Everything the billing UI needs about a tenant's current plan. */
 export async function getBillingState(tenantId: string): Promise<BillingState> {
-  const [sub, trialEndsAt] = await Promise.all([
+  const [sub, trialEndsAt, adminComp] = await Promise.all([
     getSubscription(tenantId),
     getTrialEndsAt(tenantId),
+    tenantOwnerIsAdmin(tenantId),
   ]);
   return {
     plan: (sub?.plan as PlanId) ?? "free",
-    effectivePlan: effectivePlan(sub, trialEndsAt),
+    // A comped admin is effectively Pro regardless of subscription/trial state.
+    effectivePlan: adminComp ? "pro" : effectivePlan(sub, trialEndsAt),
     status: sub?.status ?? "inactive",
     billingCycle: (sub?.billingCycle as BillingCycle | null) ?? null,
     currentPeriodEnd: sub?.currentPeriodEnd ?? null,
@@ -152,6 +177,7 @@ export async function getBillingState(tenantId: string): Promise<BillingState> {
     razorpaySubscriptionId: sub?.razorpaySubscriptionId ?? null,
     subscribed: subscriptionActive(sub),
     lifetime: sub?.lifetime ?? false,
+    adminComp,
     trialing: isTrialing(trialEndsAt),
     trialEndsAt,
   };

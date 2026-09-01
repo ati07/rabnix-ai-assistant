@@ -33,6 +33,7 @@ export default async function BillingPage() {
     cancelAtPeriodEnd: state.cancelAtPeriodEnd,
     subscribed: state.subscribed,
     lifetime: state.lifetime,
+    adminComp: state.adminComp,
     trialing: state.trialing,
     trialEndsAt: state.trialEndsAt?.toISOString() ?? null,
   };

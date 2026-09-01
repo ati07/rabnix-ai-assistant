@@ -45,6 +45,7 @@ export interface BillingView {
   cancelAtPeriodEnd: boolean;
   subscribed: boolean; // a paid subscription (recurring or lifetime) is active
   lifetime: boolean;
+  adminComp: boolean; // platform admin — Pro comped, no purchase required
   trialing: boolean;
   /** ISO string or null. */
   trialEndsAt: string | null;
@@ -110,6 +111,7 @@ export function BillingManager({ view }: { view: BillingView }) {
   // loader (the `busy` transition flag is shared across both plan cards).
   const [pendingTier, setPendingTier] = useState<PaidTier | null>(null);
 
+  const adminComp = view.adminComp;
   const isLifetime = view.lifetime;
   // A recurring paid subscription (not lifetime): the tier the row claims.
   const subscribedTier: PaidTier | null =
@@ -117,7 +119,8 @@ export function BillingManager({ view }: { view: BillingView }) {
       ? view.plan
       : null;
   const trialDaysLeft = view.trialing ? daysUntil(view.trialEndsAt) : 0;
-  const locked = !view.subscribed && !view.trialing; // trial ended, nothing paid
+  // Trial ended, nothing paid — but a comped admin is never locked.
+  const locked = !adminComp && !view.subscribed && !view.trialing;
 
   function upgrade(tier: PaidTier, chosen: BillingCycle) {
     setPendingTier(tier);
@@ -182,14 +185,17 @@ export function BillingManager({ view }: { view: BillingView }) {
     : null;
 
   // Headline badge + status line for the "Current plan" card.
-  const headline = isLifetime
-    ? "Lifetime"
-    : subscribedTier
-      ? PLANS[subscribedTier].name
-      : view.trialing
-        ? "Free trial"
-        : "Locked";
-  const badgeVariant = isLifetime || subscribedTier ? "default" : "secondary";
+  const headline = adminComp
+    ? "Platform admin"
+    : isLifetime
+      ? "Lifetime"
+      : subscribedTier
+        ? PLANS[subscribedTier].name
+        : view.trialing
+          ? "Free trial"
+          : "Locked";
+  const badgeVariant =
+    adminComp || isLifetime || subscribedTier ? "default" : "secondary";
 
   return (
     <div className="space-y-6">
@@ -202,14 +208,22 @@ export function BillingManager({ view }: { view: BillingView }) {
           </Badge>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
-          {isLifetime && (
+          {adminComp && (
+            <p className="text-muted-foreground">
+              You have <span className="text-foreground">complimentary Pro</span>{" "}
+              as a platform admin — WhatsApp + web chatbot, unlimited, on the
+              house. No billing applies to this workspace.
+            </p>
+          )}
+
+          {!adminComp && isLifetime && (
             <p className="text-muted-foreground">
               You have <span className="text-foreground">Lifetime Pro</span> —
               WhatsApp + web chatbot, unlimited, forever. No renewals.
             </p>
           )}
 
-          {subscribedTier && (
+          {!adminComp && subscribedTier && (
             <>
               <p className="text-muted-foreground">
                 Status:{" "}
@@ -235,7 +249,7 @@ export function BillingManager({ view }: { view: BillingView }) {
             </>
           )}
 
-          {view.trialing && !view.subscribed && (
+          {!adminComp && view.trialing && !view.subscribed && (
             <p className="text-muted-foreground">
               You&apos;re on a free trial of Pro —{" "}
               <span className="text-foreground">
@@ -254,8 +268,8 @@ export function BillingManager({ view }: { view: BillingView }) {
         </CardContent>
       </Card>
 
-      {/* Plan comparison — hidden once you own Lifetime. */}
-      {!isLifetime && (
+      {/* Plan comparison — hidden once you own Lifetime or have comped Pro. */}
+      {!isLifetime && !adminComp && (
         <>
           {view.canCheckout && (
             <CycleToggle cycle={cycle} onChange={setCycle} />
