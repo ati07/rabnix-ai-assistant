@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { and, count, eq } from "drizzle-orm";
+import { Bot, ExternalLink, Bell } from "lucide-react";
 import { db } from "@/lib/db";
 import { notifications } from "@/lib/db/schema";
 import { DashboardNav } from "@/components/dashboard/nav";
@@ -10,6 +12,7 @@ import { UpgradeBanner } from "@/components/dashboard/upgrade-banner";
 import { ImpersonationBanner } from "@/components/dashboard/impersonation-banner";
 import { getActiveMembership } from "@/lib/tenant";
 import { getBillingState } from "@/lib/billing/subscription";
+import { Badge } from "@/components/ui/badge";
 
 export default async function DashboardLayout({
   children,
@@ -36,39 +39,126 @@ export default async function DashboardLayout({
   const onPro = billing.effectivePlan === "pro";
   const proLapsed = billing.plan === "pro" && !onPro;
 
+  const initials = tenant.name
+    ? tenant.name
+        .split(" ")
+        .map((w) => w[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase()
+    : "RX";
+
   return (
-    <div className="flex flex-1">
-      <aside className="hidden w-60 shrink-0 flex-col border-r bg-sidebar md:flex">
-        <div className="flex h-14 items-center border-b px-4">
-          <span className="font-semibold">Rabnix AI</span>
+    <div className="flex min-h-screen bg-background text-foreground">
+      {/* Modern Desktop Sidebar */}
+      <aside className="hidden w-64 shrink-0 flex-col border-r border-border/70 bg-card/60 backdrop-blur-xl md:flex">
+        {/* Brand Header */}
+        <div className="flex h-16 items-center justify-between border-b border-border/60 px-4">
+          <Link href="/dashboard" className="flex items-center gap-2.5 group">
+            <div className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground font-bold shadow-xs transition-transform group-hover:scale-105">
+              <Bot className="size-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5 font-bold text-sm leading-none tracking-tight">
+                Rabnix AI
+                <span className="rounded-sm bg-primary/10 px-1 py-0.5 text-[9px] font-semibold text-primary">
+                  PRO
+                </span>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Autonomous Business OS</p>
+            </div>
+          </Link>
         </div>
-        <DashboardNav unreadNotifications={unreadCount} />
-        <div className="mt-auto border-t p-3">
-          <div className="truncate px-1 text-sm font-medium" title={tenant.name}>
-            {tenant.name}
-          </div>
-          <div className="truncate px-1 text-xs text-muted-foreground">
-            Your workspace
+
+        {/* Navigation */}
+        <div className="flex-1 overflow-y-auto">
+          <DashboardNav unreadNotifications={unreadCount} />
+        </div>
+
+        {/* Workspace Card at Bottom */}
+        <div className="border-t border-border/60 p-3 bg-muted/20">
+          <div className="flex items-center gap-2.5 rounded-xl border border-border/50 bg-background/80 p-2.5 shadow-xs">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary text-xs font-bold border border-primary/20">
+              {initials}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-xs font-semibold text-foreground" title={tenant.name}>
+                {tenant.name}
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>{onPro ? "Pro Workspace" : "Free Tier"}</span>
+              </div>
+            </div>
           </div>
         </div>
       </aside>
 
+      {/* Main Content Area */}
       <div className="flex min-w-0 flex-1 flex-col">
         {impersonating && <ImpersonationBanner tenantName={tenant.name} />}
-        <header className="flex h-14 items-center justify-between border-b px-4 sm:px-6">
+
+        {/* Global Topbar */}
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border/60 bg-background/85 px-4 backdrop-blur-md sm:px-6">
+          {/* Mobile hamburger + workspace name */}
           <div className="flex items-center gap-3 md:hidden">
             <DashboardMobileNav
               tenantName={tenant.name}
               unreadNotifications={unreadCount}
             />
-            <div className="text-sm font-medium truncate max-w-[160px]">{tenant.name}</div>
+            <div className="flex items-center gap-2">
+              <div className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-xs">
+                {initials}
+              </div>
+              <span className="text-sm font-semibold truncate max-w-[140px] text-foreground">
+                {tenant.name}
+              </span>
+            </div>
           </div>
-          <div className="ml-auto flex items-center gap-2">
+
+          {/* Desktop Topbar Left: Workspace Title & Status */}
+          <div className="hidden md:flex items-center gap-3">
+            <Badge
+              variant="outline"
+              className="gap-1.5 py-1 px-2.5 text-xs font-medium border-emerald-500/30 text-emerald-600 dark:text-emerald-400 bg-emerald-500/5"
+            >
+              <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              AI Assistant Ready
+            </Badge>
+
+            <Link
+              href="/"
+              target="_blank"
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <span>Landing Page</span>
+              <ExternalLink className="size-3" />
+            </Link>
+          </div>
+
+          {/* Topbar Right: Quick Actions, Theme, Notifications & User */}
+          <div className="ml-auto flex items-center gap-2.5">
+            <Link
+              href="/dashboard/notifications"
+              className="relative flex size-9 items-center justify-center rounded-lg border border-border/60 bg-background/60 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              title="Notifications"
+            >
+              <Bell className="size-4" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-destructive ring-2 ring-background" />
+              )}
+            </Link>
+
             <ThemeToggle />
+
+            <div className="h-5 w-px bg-border/60 mx-0.5" />
+
             <UserMenu email={user.email} isAdmin={isAdmin} />
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto px-4 sm:px-6 py-8">
+
+        {/* Main Canvas */}
+        <main className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 sm:py-8 max-w-7xl w-full mx-auto">
           {!onPro && !impersonating && <UpgradeBanner lapsed={proLapsed} />}
           {children}
         </main>
