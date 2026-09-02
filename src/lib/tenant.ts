@@ -29,13 +29,21 @@ export interface SessionUser {
   name: string;
   /** "user" (business owner/staff) | "platform_admin" (us). */
   role: string;
+  /** Whether the account's email has been confirmed (gates the dashboard). */
+  emailVerified: boolean;
 }
 
 /** The authenticated user for the current request, or null when signed out. */
 export async function getSessionUser(): Promise<SessionUser | null> {
   const u = await getAuthUser();
   if (!u) return null;
-  return { id: u.id, email: u.email, name: u.name, role: u.role };
+  return {
+    id: u.id,
+    email: u.email,
+    name: u.name,
+    role: u.role,
+    emailVerified: u.emailVerified,
+  };
 }
 
 /** Like {@link getSessionUser} but throws when signed out. */

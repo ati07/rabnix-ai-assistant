@@ -8,7 +8,12 @@ import { promisify } from "node:util";
 import { cookies, headers } from "next/headers";
 import { and, eq, gt, isNull, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { passwordResetTokens, sessions, users } from "@/lib/db/schema";
+import {
+  emailVerificationTokens,
+  passwordResetTokens,
+  sessions,
+  users,
+} from "@/lib/db/schema";
 import { SESSION_COOKIE, SESSION_TTL_DAYS } from "@/lib/auth-cookie";
 import { generateToken, hashToken } from "@/lib/tokens";
 
@@ -25,6 +30,7 @@ import { generateToken, hashToken } from "@/lib/tokens";
 const scrypt = promisify(scryptCb);
 const SCRYPT_KEYLEN = 64;
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000; // 1 hour
+const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const isProd = process.env.NODE_ENV === "production";
 
 export type AuthUser = typeof users.$inferSelect;
@@ -58,6 +64,7 @@ export async function createUser(input: {
   name: string;
   email: string;
   password: string;
+  phone?: string | null;
 }): Promise<AuthUser> {
   const email = input.email.trim().toLowerCase();
   const existing = await db.query.users.findFirst({
@@ -71,6 +78,7 @@ export async function createUser(input: {
       id: randomUUID(),
       name: input.name.trim() || email.split("@")[0],
       email,
+      phone: input.phone?.trim() || null,
       passwordHash: await hashPassword(input.password),
     })
     .returning();
@@ -220,11 +228,65 @@ export async function resetPasswordWithToken(
   return true;
 }
 
-/** Best-effort GC of expired sessions/reset tokens (call opportunistically). */
+// ── Email verification ─────────────────────────────────────────────────────
+
+/**
+ * Issue a single-use email-verification token for `userId`. Any outstanding
+ * (unused) tokens for the user are invalidated first so only the newest link
+ * works. Returns the raw token to embed in the verification email.
+ */
+export async function createEmailVerificationToken(
+  userId: string,
+): Promise<string> {
+  await db
+    .delete(emailVerificationTokens)
+    .where(eq(emailVerificationTokens.userId, userId));
+
+  const token = generateToken();
+  await db.insert(emailVerificationTokens).values({
+    id: randomUUID(),
+    userId,
+    tokenHash: hashToken(token),
+    expiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS),
+  });
+  return token;
+}
+
+/**
+ * Consume a verification token and mark the user's email verified. Returns the
+ * userId on success, or null when the token is unknown/expired/already used.
+ */
+export async function verifyEmailWithToken(
+  token: string,
+): Promise<string | null> {
+  const record = await db.query.emailVerificationTokens.findFirst({
+    where: and(
+      eq(emailVerificationTokens.tokenHash, hashToken(token)),
+      isNull(emailVerificationTokens.usedAt),
+      gt(emailVerificationTokens.expiresAt, new Date()),
+    ),
+  });
+  if (!record) return null;
+
+  await db
+    .update(users)
+    .set({ emailVerified: true, updatedAt: new Date() })
+    .where(eq(users.id, record.userId));
+  await db
+    .update(emailVerificationTokens)
+    .set({ usedAt: new Date() })
+    .where(eq(emailVerificationTokens.id, record.id));
+  return record.userId;
+}
+
+/** Best-effort GC of expired sessions/reset/verification tokens. */
 export async function pruneExpiredAuthRows(): Promise<void> {
   const now = new Date();
   await db.delete(sessions).where(lt(sessions.expiresAt, now));
   await db.delete(passwordResetTokens).where(lt(passwordResetTokens.expiresAt, now));
+  await db
+    .delete(emailVerificationTokens)
+    .where(lt(emailVerificationTokens.expiresAt, now));
 }
 
 /** Typed auth error so callers can branch on `.code` (e.g. "email_taken"). */

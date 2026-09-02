@@ -140,6 +140,9 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified").notNull().default(false),
+  // E.164 (e.g. +919876543210). Nullable so pre-existing rows keep working;
+  // new signups always supply it (validated + normalized in auth-actions).
+  phone: text("phone"),
   image: text("image"),
   passwordHash: text("password_hash").notNull(),
   role: text("role").notNull().default("user"),
@@ -185,6 +188,24 @@ export const passwordResetTokens = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("password_reset_tokens_user_id_idx").on(t.userId)],
+);
+
+// Single-use email-verification tokens (SHA-256-hashed at rest, like resets).
+// Issued on signup; consumed by the /verify-email link to flip
+// `users.emailVerified` true and unlock the dashboard.
+export const emailVerificationTokens = pgTable(
+  "email_verification_tokens",
+  {
+    id: text("id").primaryKey(), // crypto.randomUUID()
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull().unique(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("email_verification_tokens_user_id_idx").on(t.userId)],
 );
 
 // ── Tenants ──────────────────────────────────────────────────────────────

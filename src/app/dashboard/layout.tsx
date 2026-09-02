@@ -28,6 +28,12 @@ export default async function DashboardLayout({
   const { user, tenant, impersonating } = membership;
   const isAdmin = user.role === "platform_admin";
 
+  // The dashboard stays locked until a new account confirms its email. Platform
+  // admins (and admin impersonation) are exempt.
+  if (!user.emailVerified && !isAdmin && !impersonating) {
+    redirect("/verify-email");
+  }
+
   const [{ value: unreadCount }] = await db
     .select({ value: count() })
     .from(notifications)

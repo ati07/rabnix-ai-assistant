@@ -8,6 +8,7 @@ import { signInAction, signUpAction } from "@/lib/auth-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PhoneInput } from "@/components/auth/phone-input";
 import {
   Card,
   CardContent,
@@ -31,6 +32,7 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -38,17 +40,22 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (isSignUp && !phone) {
+      toast.error("Enter your phone number with country code.");
+      return;
+    }
     setLoading(true);
     try {
       const result = isSignUp
-        ? await signUpAction({ name: name.trim(), email, password })
+        ? await signUpAction({ name: name.trim(), email, phone, password })
         : await signInAction({ email, password });
 
       if (!result.ok) {
         toast.error(result.error);
         return;
       }
-      router.push(redirectTo);
+      // New accounts must confirm their email before the dashboard unlocks.
+      router.push(isSignUp ? "/verify-email" : redirectTo);
       router.refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Something went wrong.");
@@ -86,6 +93,7 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
               <Label htmlFor="name" className="text-xs font-medium">Full Name</Label>
               <Input
                 id="name"
+                required
                 autoComplete="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -107,6 +115,12 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
               className="h-10 text-sm"
             />
           </div>
+          {isSignUp && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="phone" className="text-xs font-medium">Phone Number</Label>
+              <PhoneInput id="phone" required disabled={loading} onChange={setPhone} />
+            </div>
+          )}
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
               <Label htmlFor="password" className="text-xs font-medium">Password</Label>
