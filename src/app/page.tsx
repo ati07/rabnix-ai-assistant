@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowRight,
   Calendar,
@@ -602,9 +603,13 @@ export default async function Home() {
       <footer className="border-t border-border/60 bg-background py-10">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
           <div className="flex items-center gap-2">
-            <div className="flex size-6 items-center justify-center rounded-md bg-primary text-primary-foreground font-bold text-xs">
-              R
-            </div>
+            <Image
+              src="/logo.png"
+              alt="Rabnix AI"
+              width={24}
+              height={24}
+              className="size-6 rounded-md"
+            />
             <span className="font-semibold text-foreground">Rabnix AI Assistant</span>
             <span>© {new Date().getFullYear()} All rights reserved.</span>
           </div>
