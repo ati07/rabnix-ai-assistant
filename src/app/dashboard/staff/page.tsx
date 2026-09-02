@@ -15,11 +15,28 @@ export default async function StaffPage() {
   const { tenant, role } = await requireMembership();
   const isOwner = role === "owner";
 
-  const rows = await db
-    .select()
-    .from(staff)
-    .where(eq(staff.tenantId, tenant.id))
-    .orderBy(asc(staff.name));
+  // Staff list and pending invites are independent — fetch them together.
+  // Only owners manage invites, so skip that query otherwise.
+  const [rows, inviteRows] = await Promise.all([
+    db
+      .select()
+      .from(staff)
+      .where(eq(staff.tenantId, tenant.id))
+      .orderBy(asc(staff.name)),
+    isOwner
+      ? db
+          .select()
+          .from(staffInvites)
+          .where(
+            and(
+              eq(staffInvites.tenantId, tenant.id),
+              isNull(staffInvites.acceptedAt),
+              gt(staffInvites.expiresAt, new Date()),
+            ),
+          )
+          .orderBy(asc(staffInvites.email))
+      : Promise.resolve([]),
+  ]);
 
   const members: StaffMember[] = rows.map((r) => ({
     id: r.id,
@@ -31,27 +48,12 @@ export default async function StaffPage() {
     hasLogin: Boolean(r.userId),
   }));
 
-  // Only owners manage invites — load the pending (un-accepted, un-expired) ones.
-  const invites: PendingInvite[] = isOwner
-    ? (
-        await db
-          .select()
-          .from(staffInvites)
-          .where(
-            and(
-              eq(staffInvites.tenantId, tenant.id),
-              isNull(staffInvites.acceptedAt),
-              gt(staffInvites.expiresAt, new Date()),
-            ),
-          )
-          .orderBy(asc(staffInvites.email))
-      ).map((i) => ({
-        id: i.id,
-        email: i.email,
-        role: i.role,
-        expiresAt: i.expiresAt.toISOString(),
-      }))
-    : [];
+  const invites: PendingInvite[] = inviteRows.map((i) => ({
+    id: i.id,
+    email: i.email,
+    role: i.role,
+    expiresAt: i.expiresAt.toISOString(),
+  }));
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">

@@ -57,34 +57,36 @@ export default async function ConversationsPage({
   const { c: selectedId } = await searchParams;
   const tenant = await requireTenant();
 
-  const rows = await db
-    .select({
-      id: conversations.id,
-      customerId: conversations.customerId,
-      customerName: conversations.customerName,
-      channelType: conversations.channelType,
-      status: conversations.status,
-      lastMessageAt: conversations.lastMessageAt,
-      createdAt: conversations.createdAt,
-      messageCount: count(messages.id),
-    })
-    .from(conversations)
-    .leftJoin(messages, eq(messages.conversationId, conversations.id))
-    .where(eq(conversations.tenantId, tenant.id))
-    .groupBy(conversations.id)
-    .orderBy(
-      desc(sql`coalesce(${conversations.lastMessageAt}, ${conversations.createdAt})`),
-    );
-
-  // Load the selected thread server-side so both panes render in one request.
-  const selected = selectedId
-    ? await db.query.conversations.findFirst({
-        where: and(
-          eq(conversations.id, selectedId),
-          eq(conversations.tenantId, tenant.id),
-        ),
+  // The list and the selected conversation are independent, so fetch them
+  // together; the thread depends on the selection, so it follows.
+  const [rows, selected] = await Promise.all([
+    db
+      .select({
+        id: conversations.id,
+        customerId: conversations.customerId,
+        customerName: conversations.customerName,
+        channelType: conversations.channelType,
+        status: conversations.status,
+        lastMessageAt: conversations.lastMessageAt,
+        createdAt: conversations.createdAt,
+        messageCount: count(messages.id),
       })
-    : null;
+      .from(conversations)
+      .leftJoin(messages, eq(messages.conversationId, conversations.id))
+      .where(eq(conversations.tenantId, tenant.id))
+      .groupBy(conversations.id)
+      .orderBy(
+        desc(sql`coalesce(${conversations.lastMessageAt}, ${conversations.createdAt})`),
+      ),
+    selectedId
+      ? db.query.conversations.findFirst({
+          where: and(
+            eq(conversations.id, selectedId),
+            eq(conversations.tenantId, tenant.id),
+          ),
+        })
+      : Promise.resolve(null),
+  ]);
 
   const thread = selected
     ? await db
