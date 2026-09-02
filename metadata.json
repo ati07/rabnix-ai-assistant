@@ -1,0 +1,6 @@
+{
+  "name": "Rabnix AI Assistant",
+  "description": "Multi-tenant WhatsApp & Web AI business assistant platform with automated appointment booking, knowledge base RAG, and CRM.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

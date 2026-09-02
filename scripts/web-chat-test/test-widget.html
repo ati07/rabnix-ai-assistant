@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rabnix Web Chat — Widget Test Host</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 0;
+        padding: 4rem 1.5rem;
+        color: #111;
+        background: #f6f7f9;
+      }
+      main {
+        max-width: 640px;
+        margin: 0 auto;
+      }
+      code {
+        background: #eaecef;
+        padding: 0.1rem 0.35rem;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Fake customer website</h1>
+      <p>
+        This page simulates a tenant's own site (a different "origin" than the
+        app). The floating chat launcher in the bottom-right is injected by
+        <code>widget.js</code>. Click it to open the AI chat in an iframe.
+      </p>
+      <ol>
+        <li>Run the app: <code>npm run dev</code> (http://localhost:3000).</li>
+        <li>
+          In <code>/dashboard/chatbot</code>, enable the widget and copy your
+          <code>data-chat-key</code>, then paste it below (or use the seeded key).
+        </li>
+        <li>
+          Open this file over HTTP so the origin isn't <code>null</code>:
+          <br />
+          <code>npx serve scripts/web-chat-test</code> — then visit the printed
+          URL (e.g. http://localhost:3000 is the app; serve picks another port).
+          Opening via <code>file://</code> also works because the default
+          allow-list is empty (any origin).
+        </li>
+      </ol>
+
+      <!--
+        Replace data-chat-key with your tenant's key from /dashboard/chatbot.
+        If you rotate the key in the dashboard, update it here too.
+      -->
+      <!-- <script
+        src="http://localhost:3000/widget.js"
+        data-chat-key="wc_48966fe58d1b7d588cf71491666f7f2dee15de36520c2948"
+        async
+      ></script> -->
+      <script src="http://localhost:3000/widget.js" data-chat-key="wc_26d344c1964ae47a4dd504bfadaaeae01567dcfe22bd3924" async></script>
+    </main>
+  </body>
+</html>
