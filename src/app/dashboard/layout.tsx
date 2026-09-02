@@ -3,6 +3,7 @@ import { and, count, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { notifications } from "@/lib/db/schema";
 import { DashboardNav } from "@/components/dashboard/nav";
+import { DashboardMobileNav } from "@/components/dashboard/mobile-nav";
 import { ThemeToggle } from "@/components/dashboard/theme-toggle";
 import { UserMenu } from "@/components/dashboard/user-menu";
 import { UpgradeBanner } from "@/components/dashboard/upgrade-banner";
@@ -54,14 +55,20 @@ export default async function DashboardLayout({
 
       <div className="flex min-w-0 flex-1 flex-col">
         {impersonating && <ImpersonationBanner tenantName={tenant.name} />}
-        <header className="flex h-14 items-center justify-between border-b px-6">
-          <div className="text-sm font-medium md:hidden">{tenant.name}</div>
+        <header className="flex h-14 items-center justify-between border-b px-4 sm:px-6">
+          <div className="flex items-center gap-3 md:hidden">
+            <DashboardMobileNav
+              tenantName={tenant.name}
+              unreadNotifications={unreadCount}
+            />
+            <div className="text-sm font-medium truncate max-w-[160px]">{tenant.name}</div>
+          </div>
           <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />
             <UserMenu email={user.email} isAdmin={isAdmin} />
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto px-6 py-8">
+        <main className="flex-1 overflow-y-auto px-4 sm:px-6 py-8">
           {!onPro && !impersonating && <UpgradeBanner lapsed={proLapsed} />}
           {children}
         </main>

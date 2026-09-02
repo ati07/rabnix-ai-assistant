@@ -16,6 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Bot, ArrowRight } from "lucide-react";
 
 /**
  * Email/password sign-in & sign-up form. One component, two modes. Submits to
@@ -56,31 +57,40 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
   }
 
   return (
-    <Card className="w-full max-w-sm">
-      <CardHeader>
-        <CardTitle>{isSignUp ? "Create your account" : "Welcome back"}</CardTitle>
-        <CardDescription>
+    <Card className="w-full max-w-md border-border/80 bg-card shadow-xl dark:border-border/60">
+      <CardHeader className="space-y-1.5 pb-4">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold">
+            <Bot className="size-4" />
+          </div>
+          <span className="text-sm font-semibold tracking-tight">Rabnix AI</span>
+        </div>
+        <CardTitle className="text-xl font-bold tracking-tight">
+          {isSignUp ? "Create your workspace account" : "Welcome back to Rabnix"}
+        </CardTitle>
+        <CardDescription className="text-xs">
           {isSignUp
-            ? "Start your AI business assistant in minutes."
-            : "Sign in to your Rabnix workspace."}
+            ? "Get started with your 7-day free Pro trial. No credit card required."
+            : "Sign in to manage your AI assistant, WhatsApp chats, and CRM."}
         </CardDescription>
       </CardHeader>
       <form onSubmit={onSubmit}>
         <CardContent className="flex flex-col gap-4">
           {isSignUp && (
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="name">Name</Label>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="name" className="text-xs font-medium">Full Name</Label>
               <Input
                 id="name"
                 autoComplete="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Your name"
+                placeholder="Dr. Rajesh Sharma"
+                className="h-10 text-sm"
               />
             </div>
           )}
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="email">Email</Label>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="email" className="text-xs font-medium">Work Email</Label>
             <Input
               id="email"
               type="email"
@@ -89,17 +99,18 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@business.com"
+              className="h-10 text-sm"
             />
           </div>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password" className="text-xs font-medium">Password</Label>
               {!isSignUp && (
                 <Link
                   href="/forgot-password"
-                  className="text-xs text-muted-foreground hover:underline"
+                  className="text-xs text-muted-foreground hover:text-foreground hover:underline transition-colors"
                 >
-                  Forgot?
+                  Forgot password?
                 </Link>
               )}
             </div>
@@ -112,28 +123,36 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder={isSignUp ? "At least 8 characters" : "••••••••"}
+              className="h-10 text-sm"
             />
           </div>
         </CardContent>
-        <CardFooter className="mt-4 flex flex-col gap-3">
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading
-              ? "Please wait…"
-              : isSignUp
-                ? "Create account"
-                : "Sign in"}
+        <CardFooter className="mt-2 flex flex-col gap-3.5">
+          <Button type="submit" className="w-full h-10 font-medium shadow-xs" disabled={loading}>
+            {loading ? (
+              "Please wait…"
+            ) : isSignUp ? (
+              <span className="flex items-center gap-1.5">
+                Create Account <ArrowRight className="size-4" />
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5">
+                Sign in to Workspace <ArrowRight className="size-4" />
+              </span>
+            )}
           </Button>
-          <p className="text-center text-sm text-muted-foreground">
+          <div className="text-center text-xs text-muted-foreground">
             {isSignUp ? "Already have an account? " : "New to Rabnix? "}
             <Link
               href={isSignUp ? "/sign-in" : "/sign-up"}
-              className="font-medium text-foreground hover:underline"
+              className="font-semibold text-foreground hover:underline"
             >
-              {isSignUp ? "Sign in" : "Create an account"}
+              {isSignUp ? "Sign in" : "Create an account (7-day Pro trial)"}
             </Link>
-          </p>
+          </div>
         </CardFooter>
       </form>
     </Card>
   );
 }
+
