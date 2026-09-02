@@ -49,7 +49,7 @@ export default async function DashboardLayout({
     : "RX";
 
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
+    <div className="flex h-dvh overflow-hidden bg-background text-foreground">
       {/* Modern Desktop Sidebar */}
       <aside className="hidden w-64 shrink-0 flex-col border-r border-border/70 bg-card/60 backdrop-blur-xl md:flex">
         {/* Brand Header */}
@@ -71,7 +71,7 @@ export default async function DashboardLayout({
         </div>
 
         {/* Navigation */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto scrollbar-hide">
           <DashboardNav unreadNotifications={unreadCount} />
         </div>
 
@@ -158,7 +158,7 @@ export default async function DashboardLayout({
         </header>
 
         {/* Main Canvas */}
-        <main className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 sm:py-8 max-w-7xl w-full mx-auto">
+        <main className="flex-1 overflow-y-auto scrollbar-hide px-4 sm:px-6 py-6 sm:py-8 max-w-7xl w-full mx-auto">
           {!onPro && !impersonating && <UpgradeBanner lapsed={proLapsed} />}
           {children}
         </main>

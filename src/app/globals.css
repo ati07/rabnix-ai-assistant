@@ -124,6 +124,15 @@
   }
 }
 
+/* Hide the scrollbar while keeping the element scrollable. */
+.scrollbar-hide {
+  -ms-overflow-style: none; /* IE and legacy Edge */
+  scrollbar-width: none; /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
 .bg-dot-pattern {
   background-image: radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0);
   background-size: 24px 24px;
