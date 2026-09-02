@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Bot, Menu, X, ArrowRight } from "lucide-react";
+import Image from "next/image";
+import { Menu, X, ArrowRight } from "lucide-react";
 import { ThemeToggle } from "@/components/dashboard/theme-toggle";
 import { Button } from "@/components/ui/button";
 
@@ -14,9 +15,14 @@ export function LandingHeader({ isLoggedIn }: { isLoggedIn: boolean }) {
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* Brand Logo */}
         <Link href="/" className="flex items-center gap-2.5 group">
-          <div className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm group-hover:scale-105 transition-transform">
-            <Bot className="size-5" />
-          </div>
+          <Image
+            src="/logo.png"
+            alt="Rabnix AI"
+            width={36}
+            height={36}
+            priority
+            className="size-9 rounded-xl shadow-sm transition-transform group-hover:scale-105"
+          />
           <div className="flex flex-col">
             <span className="text-base font-bold tracking-tight text-foreground leading-none">
               Rabnix <span className="text-primary font-normal">AI</span>

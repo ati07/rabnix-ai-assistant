@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { Bot, CheckCircle2, Sparkles } from "lucide-react";
+import Image from "next/image";
+import { CheckCircle2, Sparkles } from "lucide-react";
 import { AuthForm } from "@/components/auth/auth-form";
 import { ThemeToggle } from "@/components/dashboard/theme-toggle";
 
@@ -16,9 +17,14 @@ export default function SignUpPage() {
       <div className="relative hidden w-full flex-col justify-between border-r border-border/60 bg-muted/20 p-10 lg:flex lg:w-1/2">
         <div className="flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-              <Bot className="size-5" />
-            </div>
+            <Image
+              src="/logo.png"
+              alt="Rabnix AI"
+              width={36}
+              height={36}
+              priority
+              className="size-9 rounded-xl"
+            />
             <span className="text-base font-bold tracking-tight">Rabnix AI</span>
           </Link>
           <ThemeToggle />
@@ -68,9 +74,13 @@ export default function SignUpPage() {
       <div className="flex flex-1 flex-col items-center justify-center p-6 sm:p-10">
         <div className="flex w-full justify-between pb-6 lg:hidden">
           <Link href="/" className="flex items-center gap-2">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Bot className="size-4" />
-            </div>
+            <Image
+              src="/logo.png"
+              alt="Rabnix AI"
+              width={32}
+              height={32}
+              className="size-8 rounded-lg"
+            />
             <span className="font-bold">Rabnix AI</span>
           </Link>
           <ThemeToggle />

@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { and, count, eq } from "drizzle-orm";
-import { Bot, ExternalLink, Bell } from "lucide-react";
+import { ExternalLink, Bell } from "lucide-react";
 import { db } from "@/lib/db";
 import { notifications } from "@/lib/db/schema";
 import { DashboardNav } from "@/components/dashboard/nav";
@@ -55,9 +56,14 @@ export default async function DashboardLayout({
         {/* Brand Header */}
         <div className="flex h-16 items-center justify-between border-b border-border/60 px-4">
           <Link href="/dashboard" className="flex items-center gap-2.5 group">
-            <div className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground font-bold shadow-xs transition-transform group-hover:scale-105">
-              <Bot className="size-5" />
-            </div>
+            <Image
+              src="/logo.png"
+              alt="Rabnix AI"
+              width={36}
+              height={36}
+              priority
+              className="size-9 rounded-xl shadow-xs transition-transform group-hover:scale-105"
+            />
             <div>
               <div className="flex items-center gap-1.5 font-bold text-sm leading-none tracking-tight">
                 Rabnix AI

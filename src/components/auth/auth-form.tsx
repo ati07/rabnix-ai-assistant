@@ -16,7 +16,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Bot, ArrowRight } from "lucide-react";
+import Image from "next/image";
+import { ArrowRight } from "lucide-react";
 
 /**
  * Email/password sign-in & sign-up form. One component, two modes. Submits to
@@ -60,9 +61,13 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
     <Card className="w-full max-w-md border-border/80 bg-card shadow-xl dark:border-border/60">
       <CardHeader className="space-y-1.5 pb-4">
         <div className="flex items-center gap-2 mb-2">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold">
-            <Bot className="size-4" />
-          </div>
+          <Image
+            src="/logo.png"
+            alt="Rabnix AI"
+            width={32}
+            height={32}
+            className="size-8 rounded-lg"
+          />
           <span className="text-sm font-semibold tracking-tight">Rabnix AI</span>
         </div>
         <CardTitle className="text-xl font-bold tracking-tight">
