@@ -108,7 +108,7 @@ export default async function ConversationsPage({
       {/* Ambient gradient glow behind the panel, matching the landing preview */}
       <div className="pointer-events-none absolute -inset-0.5 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-primary/10 to-teal-500/10 opacity-70 blur-xl" />
 
-      <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-border/80 bg-card/95 shadow-2xl backdrop-blur-xl dark:border-border/50 dark:bg-card/90">
+      <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-border/80 bg-card/95 shadow-2xl backdrop-blur-xl dark:border-white/12 dark:bg-[oklch(0.18_0.008_240)] dark:shadow-black/60 dark:ring-1 dark:ring-inset dark:ring-white/5">
       {/* Window bar echoing the landing preview */}
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-border/60 px-4">
         <div className="flex items-center gap-2">

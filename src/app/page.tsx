@@ -13,6 +13,7 @@ import {
 import { getSessionUser } from "@/lib/tenant";
 import { LandingHeader } from "@/components/landing/landing-header";
 import { LandingInteractivePreview } from "@/components/landing/interactive-preview";
+import { TypewriterText } from "@/components/landing/typewriter-text";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -46,8 +47,15 @@ export default async function Home() {
           {/* Main Headline */}
           <h1 className="mx-auto max-w-4xl text-3xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl text-foreground">
             Deploy 24/7 AI Business Employees on{" "}
+            <TypewriterText
+              words={["WhatsApp"]}
+              typingSpeed={160}
+              deletingSpeed={90}
+              pauseMs={2200}
+              className="bg-gradient-to-r from-emerald-600 via-teal-600 to-primary bg-clip-text text-transparent dark:from-emerald-400 dark:via-teal-300 dark:to-primary"
+            />{" "}
             <span className="bg-gradient-to-r from-emerald-600 via-teal-600 to-primary bg-clip-text text-transparent dark:from-emerald-400 dark:via-teal-300 dark:to-primary">
-              WhatsApp &amp; Web
+              &amp; Web
             </span>
           </h1>
 

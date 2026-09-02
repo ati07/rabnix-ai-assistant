@@ -152,7 +152,7 @@ export function LandingInteractivePreview() {
   };
 
   return (
-    <div className="relative mx-auto w-full max-w-5xl rounded-2xl border border-border/80 bg-card/95 p-2 shadow-2xl backdrop-blur-xl transition-all md:p-5 dark:border-border/50 dark:bg-card/90">
+    <div className="relative mx-auto w-full max-w-5xl rounded-2xl border border-border/80 bg-card/95 p-2 shadow-2xl backdrop-blur-xl transition-all md:p-5 dark:border-white/12 dark:bg-[oklch(0.18_0.008_240)] dark:shadow-black/60 dark:ring-1 dark:ring-inset dark:ring-white/5">
       {/* Decorative ambient gradient backdrop */}
       <div className="pointer-events-none absolute -inset-0.5 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-primary/10 to-teal-500/10 blur-xl opacity-70" />
 
