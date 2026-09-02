@@ -46,6 +46,44 @@ export default async function DashboardLayout({
   const onPro = billing.effectivePlan === "pro";
   const proLapsed = billing.plan === "pro" && !onPro;
 
+  // A short plan label for the sidebar/topbar so the current plan (and a trial
+  // countdown) is always visible — not just on the billing page.
+  const trialDaysLeft =
+    billing.trialing && billing.trialEndsAt
+      ? Math.max(
+          0,
+          Math.ceil((billing.trialEndsAt.getTime() - Date.now()) / 86_400_000),
+        )
+      : 0;
+  const planLabel = billing.adminComp
+    ? "Pro"
+    : billing.lifetime
+      ? "Lifetime"
+      : billing.subscribed
+        ? billing.plan === "basic"
+          ? "Basic"
+          : "Pro"
+        : billing.trialing
+          ? "Free trial"
+          : "Free";
+
+  // Topbar pill: amber during a trial (with countdown), emerald when on a paid
+  // plan, primary "upgrade" cue when locked on Free.
+  const planPill = billing.trialing
+    ? {
+        text: `Free trial · ${trialDaysLeft}d left`,
+        cls: "border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/5 hover:bg-amber-500/10",
+      }
+    : billing.subscribed || billing.adminComp
+      ? {
+          text: planLabel,
+          cls: "border-emerald-500/30 text-emerald-600 dark:text-emerald-400 bg-emerald-500/5 hover:bg-emerald-500/10",
+        }
+      : {
+          text: "Free · Upgrade",
+          cls: "border-primary/30 text-primary bg-primary/5 hover:bg-primary/10",
+        };
+
   const initials = tenant.name
     ? tenant.name
         .split(" ")
@@ -98,8 +136,15 @@ export default async function DashboardLayout({
                 {tenant.name}
               </div>
               <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span>{onPro ? "Pro Workspace" : "Free Tier"}</span>
+                <span
+                  className={`size-1.5 rounded-full animate-pulse ${
+                    billing.trialing ? "bg-amber-500" : "bg-emerald-500"
+                  }`}
+                />
+                <span>
+                  {planLabel}
+                  {billing.trialing && ` · ${trialDaysLeft}d left`}
+                </span>
               </div>
             </div>
           </div>
@@ -150,6 +195,16 @@ export default async function DashboardLayout({
 
           {/* Topbar Right: Quick Actions, Theme, Notifications & User */}
           <div className="ml-auto flex items-center gap-2.5">
+            {/* Current plan / trial countdown — always visible, links to billing. */}
+            <Link
+              href="/dashboard/billing"
+              title="Manage billing"
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${planPill.cls}`}
+            >
+              <span className="size-1.5 rounded-full bg-current opacity-70" />
+              {planPill.text}
+            </Link>
+
             <Link
               href="/dashboard/notifications"
               className="relative flex size-9 items-center justify-center rounded-lg border border-border/60 bg-background/60 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
