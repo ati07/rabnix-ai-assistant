@@ -18,7 +18,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import Image from "next/image";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Eye, EyeOff } from "lucide-react";
 
 /**
  * Email/password sign-in & sign-up form. One component, two modes. Submits to
@@ -34,6 +34,7 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const isSignUp = mode === "sign-up";
@@ -133,17 +134,32 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
                 </Link>
               )}
             </div>
-            <Input
-              id="password"
-              type="password"
-              required
-              minLength={8}
-              autoComplete={isSignUp ? "new-password" : "current-password"}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={isSignUp ? "At least 8 characters" : "••••••••"}
-              className="h-10 text-sm"
-            />
+            <div className="relative">
+              <Input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                required
+                minLength={8}
+                autoComplete={isSignUp ? "new-password" : "current-password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={isSignUp ? "At least 8 characters" : "••••••••"}
+                className="h-10 pr-10 text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                tabIndex={-1}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {showPassword ? (
+                  <EyeOff className="size-4" />
+                ) : (
+                  <Eye className="size-4" />
+                )}
+              </button>
+            </div>
           </div>
         </CardContent>
         <CardFooter className="mt-2 flex flex-col gap-3.5">

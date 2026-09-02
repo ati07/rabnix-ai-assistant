@@ -88,6 +88,25 @@ export async function tenantOwnerIsAdmin(tenantId: string): Promise<boolean> {
   return row?.role === "platform_admin";
 }
 
+/**
+ * The tenant owner's email + name and the workspace name — for billing
+ * notifications (e.g. payment-failure dunning). Null if the tenant is gone.
+ */
+export async function getTenantOwnerContact(
+  tenantId: string,
+): Promise<{ email: string; name: string; tenantName: string } | null> {
+  const [row] = await db
+    .select({
+      email: users.email,
+      name: users.name,
+      tenantName: tenants.name,
+    })
+    .from(tenants)
+    .innerJoin(users, eq(users.id, tenants.ownerUserId))
+    .where(eq(tenants.id, tenantId));
+  return row ?? null;
+}
+
 /** Entitlements for the tenant's effective plan. */
 export async function getEntitlements(tenantId: string): Promise<Entitlements> {
   const [sub, trialEndsAt, adminComp] = await Promise.all([

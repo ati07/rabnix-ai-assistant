@@ -6,7 +6,12 @@ import {
   verifyWebhookSignature,
   type RazorpaySubscription,
 } from "@/lib/billing/razorpay";
-import { patchByRazorpayId, upsertSubscription } from "@/lib/billing/subscription";
+import {
+  getTenantOwnerContact,
+  patchByRazorpayId,
+  upsertSubscription,
+} from "@/lib/billing/subscription";
+import { sendPaymentFailedEmail } from "@/lib/email/billing";
 import type { PaidTier } from "@/lib/billing/plans";
 
 export const runtime = "nodejs";
@@ -112,6 +117,33 @@ async function applySubscription(
       .update(billingEvents)
       .set({ tenantId: touchedTenant })
       .where(eq(billingEvents.id, eventRowId));
+
+    // Dunning: a charge failed. `subscription.pending` = Razorpay will retry;
+    // `subscription.halted` = retries exhausted, access paused. Webhook dedup
+    // means one email per distinct event (i.e. per retry Razorpay sends).
+    const halted = event === "subscription.halted" || sub.status === "halted";
+    if (event === "subscription.pending" || halted) {
+      await notifyPaymentFailure(touchedTenant, halted);
+    }
+  }
+}
+
+/** Email the tenant owner that their payment failed. Best-effort; never throws. */
+async function notifyPaymentFailure(
+  tenantId: string,
+  halted: boolean,
+): Promise<void> {
+  try {
+    const contact = await getTenantOwnerContact(tenantId);
+    if (!contact) return;
+    await sendPaymentFailedEmail({
+      to: contact.email,
+      name: contact.name,
+      tenantName: contact.tenantName,
+      halted,
+    });
+  } catch (err) {
+    console.error("[billing-webhook] dunning email failed:", err);
   }
 }
 
