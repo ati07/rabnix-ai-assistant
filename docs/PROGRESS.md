@@ -242,10 +242,30 @@ Everything below is **implemented**. Paths are the source of truth.
   channel-agnostic: injected `WhatsAppSender` + optional `EmailSender`.
 - **Runs in** — `src/worker/index.ts` (polls every 15s). Delivers WhatsApp via
   the live Baileys socket **or** stateless Cloud API, and email via Resend.
+- **Dev helper** — `scripts/flush-reminders.mts` drains due reminders once
+  (`npx tsx scripts/flush-reminders.mts`) for local testing without the worker.
+
+### Appointments (dashboard)
+- **Page** — `src/app/dashboard/appointments/{page,actions}.tsx` +
+  `src/components/dashboard/appointments-calendar.tsx`. A hand-rolled month
+  **calendar** (no date lib — `Intl` via `src/lib/time.ts`, matching the
+  lean-deps ethos) with per-day status dots, a selected-day schedule panel, a
+  list view (Upcoming / Earlier), and an inline **status** dropdown
+  (`updateAppointmentStatus`, tenant-scoped). Timezone-correct day bucketing via
+  `dateKeyInZone`. Linked in the sidebar (`nav.tsx` + `mobile-nav.tsx`) under
+  Operations. Bookings are created by the AI; this page is for viewing/managing.
 
 ### Email
 - `src/lib/email/index.ts` (`sendEmail` via Resend REST; `isEmailConfigured`).
   Gated on `RESEND_API_KEY` + `EMAIL_FROM`.
+- **Booking confirmations** — `src/lib/email/booking.ts` (customer + owner copy,
+  `{subject,text,html}`). On a successful `book_appointment`, `sendBookingEmails`
+  in `src/lib/ai/actions.ts` sends **immediately** via Resend (like
+  verification/billing — NOT queued, so no worker dependency). Best-effort: a
+  mail failure never fails the booking. Customer email only when one is on file
+  (the model is nudged to collect it); owner email is deduped when it equals the
+  customer's (solo operator → one email). `book_appointment` already notifies
+  staff, so `notify_staff`'s description was tightened to stop double-notifying.
 
 ### Analytics
 - `src/app/dashboard/analytics/page.tsx` + `components/dashboard/analytics/daily-volume.tsx`.
@@ -406,7 +426,40 @@ subscribe to the `messages` field.
 
 ## 10. What's left / next steps
 
-### ▶ RESUME HERE (last session: 2026-08-10)
+### ▶ RESUME HERE (last session: 2026-09-03)
+
+**Appointment booking is now end-to-end for the business owner, and the AI emails
+confirmations.** Both shipped and verified against the live server + local DB.
+
+**What got done this session (2026-09-03):**
+- ✅ **Booking confirmation emails.** On a successful `book_appointment`, the AI
+  now emails the customer (a confirmation) and the owner (a "New booking" alert),
+  sent **immediately** via Resend — direct, not through the reminders queue, so
+  they don't depend on the worker running (matches verification/billing emails).
+  Best-effort; a mail failure never fails the booking. `src/lib/email/booking.ts`
+  + `sendBookingEmails` in `src/lib/ai/actions.ts`.
+- ✅ **Appointments dashboard page** (`/dashboard/appointments`) — month calendar
+  + day panel + list view + inline status editing. Hand-rolled calendar (no date
+  lib). New nav entry under Operations. See the [Appointments](#appointments-dashboard) file map.
+- ✅ **Fixed double staff notification on booking.** The AI was calling
+  `notify_staff` after `book_appointment` (which already notifies) because
+  `notify_staff`'s description listed "a new booking" as a trigger. Tightened both
+  tool descriptions so one booking = one notification.
+- ✅ **Owner/customer email dedup** — when the owner IS the customer (same email,
+  e.g. a solo operator testing on themselves) only one email sends.
+
+**Gotcha uncovered:** confirmation emails were initially **queued** as `reminders`
+rows, which only the **worker** (`npm run worker`) drains — so with only `next dev`
+running they sat `pending`. Switched to immediate direct send to remove that
+dependency. `scripts/flush-reminders.mts` added to flush the queue manually in dev.
+
+**Prod prerequisites (unchanged, still required):** Resend must be live
+(`RESEND_API_KEY` + `EMAIL_FROM` + verified `rabnix.com` sender) for any of these
+emails to actually send.
+
+---
+
+### ▶ Earlier session (2026-08-10)
 
 **Web chat widget + cross-channel human handover are built, merged to `main`, and
 working end-to-end.** This gives a fully-functional customer channel with no Meta

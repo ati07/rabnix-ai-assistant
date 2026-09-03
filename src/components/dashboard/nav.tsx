@@ -8,6 +8,7 @@ import {
   Bot,
   Building2,
   BookOpen,
+  CalendarDays,
   Contact,
   CreditCard,
   LayoutDashboard,
@@ -49,6 +50,7 @@ const navGroups: NavGroup[] = [
     label: "Operations",
     items: [
       { href: "/dashboard/conversations", label: "Conversations", icon: MessagesSquare },
+      { href: "/dashboard/appointments", label: "Appointments", icon: CalendarDays },
       { href: "/dashboard/customers", label: "Customers & Leads", icon: Contact },
       { href: "/dashboard/staff", label: "Team & Staff", icon: Users },
       { href: "/dashboard/notifications", label: "Notifications", icon: Bell },
