@@ -96,7 +96,7 @@ export const tools: LlmToolSpec[] = [
   {
     name: "book_appointment",
     description:
-      "Book an appointment into an available slot. Call this only AFTER check_availability confirmed the exact start time is free and the customer has agreed to it.",
+      "Book an appointment into an available slot. Call this only AFTER check_availability confirmed the exact start time is free and the customer has agreed to it. This already alerts the business's staff AND emails a confirmation to the customer and owner — so do NOT also call notify_staff for the booking.",
     inputSchema: {
       type: "object",
       properties: {
@@ -114,7 +114,7 @@ export const tools: LlmToolSpec[] = [
   {
     name: "notify_staff",
     description:
-      "Send an alert to the business's staff (dashboard + their configured channels). Call this when something needs a human's attention now — a new booking, an urgent request, or a message the customer wants escalated.",
+      "Send an ad-hoc alert to the business's staff (dashboard + their configured channels) for something that needs a human's attention — an urgent request or a message the customer wants passed on. Do NOT use this to announce a booking: book_appointment already notifies staff on its own.",
     inputSchema: {
       type: "object",
       properties: {

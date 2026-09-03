@@ -8,6 +8,8 @@ import {
   notifications,
   reminders,
   staff,
+  tenants,
+  users,
   type ServiceItem,
 } from "@/lib/db/schema";
 import {
@@ -20,10 +22,14 @@ import {
   zonedTimeToUtc,
 } from "@/lib/time";
 import { scheduleLeadFollowups } from "@/lib/leads/followups";
+import { isEmailConfigured, sendEmail } from "@/lib/email";
+import { customerBookingEmail, ownerBookingEmail } from "@/lib/email/booking";
 import type { LlmToolResult, ToolExecutor, ToolInvocation } from "./provider";
 import { searchKnowledge } from "./rag";
 
 type BusinessConfig = typeof businessConfig.$inferSelect;
+
+type Customer = typeof customers.$inferSelect;
 
 /** Everything a tool needs to act on behalf of one conversation. */
 export interface ToolContext {
@@ -408,6 +414,16 @@ async function doBookAppointment(
       meta: { appointmentId: appt.id },
     });
 
+    // Confirmation emails — one to the customer (if we have their email), one to
+    // the business owner. Sent immediately (best-effort); a mail failure never
+    // fails the booking itself.
+    const emailed = await sendBookingEmails(ctx, {
+      customer,
+      serviceName: service?.name ?? serviceName,
+      when,
+      staffName: staffRow?.name ?? null,
+    });
+
     return {
       content: JSON.stringify({
         booked: true,
@@ -415,6 +431,10 @@ async function doBookAppointment(
         service: service?.name ?? serviceName,
         when,
         staff: staffRow?.name ?? null,
+        confirmationEmailSent: emailed.customerEmailed,
+        note: customer.email
+          ? undefined
+          : "Booked, but we have no email on file to send this customer a confirmation. Ask for their email and save it with update_customer so we can email them the details.",
       }),
     };
   } catch (err) {
@@ -427,6 +447,93 @@ async function doBookAppointment(
     }
     throw err;
   }
+}
+
+/**
+ * Send booking-confirmation emails immediately after a successful booking:
+ * - the customer (only when we have an email on file — WhatsApp visitors rarely
+ *   do until they share one; web visitors may have saved one via update_customer);
+ * - the business owner (the account holder), always.
+ *
+ * Sent directly via Resend (like verification/billing emails), not queued, so
+ * they arrive at once without depending on the worker. Best-effort: each send is
+ * isolated, and a mail failure never fails the booking. Returns whether the
+ * customer was actually emailed (surfaced to the model).
+ */
+async function sendBookingEmails(
+  ctx: ToolContext,
+  b: {
+    customer: Customer;
+    serviceName: string;
+    when: string;
+    staffName: string | null;
+  },
+): Promise<{ customerEmailed: boolean }> {
+  if (!isEmailConfigured()) return { customerEmailed: false };
+
+  const businessName = ctx.config?.displayName?.trim() || "your business";
+  let customerEmailed = false;
+
+  const customerEmail = b.customer.email?.trim();
+  if (customerEmail) {
+    const mail = customerBookingEmail({
+      businessName,
+      customerName: b.customer.name,
+      serviceName: b.serviceName,
+      when: b.when,
+      staffName: b.staffName,
+    });
+    try {
+      await sendEmail({ to: customerEmail, ...mail });
+      customerEmailed = true;
+    } catch (err) {
+      console.error("[book_appointment] customer confirmation email failed:", err);
+    }
+  }
+
+  const owner = await getTenantOwnerEmail(ctx.tenantId);
+  // Skip the owner notification when the owner IS the customer (same address) —
+  // e.g. a solo operator booking themselves — so they don't get two emails. In
+  // real use owner and customer are different people and both are sent.
+  const sameAsCustomer =
+    !!owner && !!customerEmail && owner.toLowerCase() === customerEmail.toLowerCase();
+  if (owner && !sameAsCustomer) {
+    // A real reachable number: the volunteered contact phone, or — on WhatsApp
+    // channels only — the conversation id (which IS their number). On `web` the
+    // phone column is an anonymous session id, so never show it.
+    const contactPhone =
+      (b.customer.customFields?.contactPhone as string | undefined)?.trim() ||
+      (ctx.channel !== "web" ? b.customer.phone : undefined);
+    const mail = ownerBookingEmail({
+      businessName,
+      customerName: b.customer.name || contactPhone || "A customer",
+      customerContact: b.customer.email?.trim() || contactPhone || null,
+      serviceName: b.serviceName,
+      when: b.when,
+      staffName: b.staffName,
+    });
+    try {
+      await sendEmail({ to: owner, ...mail });
+    } catch (err) {
+      console.error("[book_appointment] owner booking email failed:", err);
+    }
+  }
+
+  return { customerEmailed };
+}
+
+/**
+ * The tenant owner's email (the account holder), for the booking notification.
+ * Queried directly here rather than via the billing helper to keep the auth /
+ * `next/headers` chain out of the worker's import graph.
+ */
+async function getTenantOwnerEmail(tenantId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ email: users.email })
+    .from(tenants)
+    .innerJoin(users, eq(users.id, tenants.ownerUserId))
+    .where(eq(tenants.id, tenantId));
+  return row?.email ?? null;
 }
 
 // ── Staff notifications ────────────────────────────────────────────────────
