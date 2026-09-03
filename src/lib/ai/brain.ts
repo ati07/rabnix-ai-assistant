@@ -11,6 +11,7 @@ import type { Tenant } from "@/lib/tenant";
 import { getEntitlements } from "@/lib/billing/subscription";
 import { cancelLeadFollowups } from "@/lib/leads/followups";
 import { makeToolExecutor } from "./actions";
+import { perfEnabled, perfLog, since } from "./perf";
 import { buildSystemPrompt } from "./prompt";
 import { getProvider } from "./providers";
 import type { LlmMessage, ToolInvocation } from "./provider";
@@ -54,6 +55,12 @@ export async function handleIncomingMessage(
   incoming: IncomingMessage,
 ): Promise<BrainResult> {
   const channel: ChannelType = incoming.channel ?? "baileys";
+
+  // Perf: mark the start so we can split DB-setup vs. model vs. persist. Only the
+  // full path (one that actually runs the model) emits a line; the early-return
+  // guards below are all sub-millisecond and not worth tracing.
+  const perf = perfEnabled();
+  const startedAt = perf ? performance.now() : 0;
 
   const config = await db.query.businessConfig.findFirst({
     where: eq(businessConfig.tenantId, tenant.id),
@@ -144,11 +151,15 @@ export async function handleIncomingMessage(
     config,
   });
 
+  const setupMs = perf ? since(startedAt) : 0;
+  const modelStart = perf ? performance.now() : 0;
   const result = await provider.run(
     { system, messages: history, tools },
     executeTool,
   );
+  const modelMs = perf ? since(modelStart) : 0;
 
+  const persistStart = perf ? performance.now() : 0;
   const reply = result.text.trim();
   if (reply) {
     await db.insert(messages).values({
@@ -163,6 +174,21 @@ export async function handleIncomingMessage(
       },
     });
     await touchConversation(conversation.id);
+  }
+
+  if (perf) {
+    const persistMs = since(persistStart);
+    perfLog("brain", {
+      ch: channel,
+      conv: conversation.id.slice(0, 8),
+      setupMs,
+      modelMs,
+      persistMs,
+      totalMs: since(startedAt),
+      calls: result.toolCalls.length,
+      tools: result.toolCalls.map((c) => c.name).join(",") || undefined,
+      reply: reply ? `${reply.length}ch` : "0",
+    });
   }
 
   return {

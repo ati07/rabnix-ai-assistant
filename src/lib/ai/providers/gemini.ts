@@ -7,6 +7,7 @@ import {
   type Schema,
 } from "@google/genai";
 import { env } from "@/lib/env";
+import { perfEnabled, perfLog, since } from "../perf";
 import type {
   LlmProvider,
   LlmRunRequest,
@@ -179,17 +180,28 @@ export class GeminiProvider implements LlmProvider {
     let stopReason = "stop";
     let usage: LlmUsage | undefined;
 
+    // Perf: track each model round-trip vs. tool-execution time so we can see
+    // whether latency is the model or the sequential tool loop. Cheap; gated.
+    const perf = perfEnabled();
+    const genMs: number[] = [];
+    let toolMs = 0;
+
     for (let turn = 0; turn < maxTurns; turn++) {
+      const genStart = perf ? performance.now() : 0;
       const response = await this.generateWithFallback({
         contents,
         config: {
           systemInstruction,
           maxOutputTokens: request.maxTokens ?? DEFAULT_MAX_TOKENS,
+          // `thinkingConfig` (our latency guard) is added per-model inside
+          // generateWithFallback — the target model isn't known until fallback
+          // picks it, and lite-tier models don't accept the field.
           ...(functionDeclarations.length > 0
             ? { tools: [{ functionDeclarations }] }
             : {}),
         },
       });
+      if (perf) genMs.push(since(genStart));
 
       usage = accumulateUsage(usage, response);
       const candidate = response.candidates?.[0];
@@ -222,7 +234,9 @@ export class GeminiProvider implements LlmProvider {
           input: (fc.args ?? {}) as Record<string, unknown>,
         };
         toolCalls.push(call);
+        const toolStart = perf ? performance.now() : 0;
         const result = await executeTool(call);
+        if (perf) toolMs += since(toolStart);
         responseParts.push({
           functionResponse: {
             ...(fc.id ? { id: fc.id } : {}),
@@ -234,6 +248,20 @@ export class GeminiProvider implements LlmProvider {
         });
       }
       contents.push({ role: "user", parts: responseParts });
+    }
+
+    if (perf) {
+      const genTotal = genMs.reduce((a, b) => a + b, 0);
+      perfLog("gemini", {
+        model: this.activeModel,
+        turns: genMs.length,
+        genMs: `${genTotal}[${genMs.join(",")}]`,
+        toolMs,
+        calls: toolCalls.length,
+        in: usage?.inputTokens,
+        out: usage?.outputTokens,
+        cacheRead: usage?.cacheReadTokens || undefined,
+      });
     }
 
     return { text: finalText, toolCalls, stopReason, usage };
@@ -277,7 +305,7 @@ export class GeminiProvider implements LlmProvider {
         const response = await this.generateWithRetry({
           model,
           contents: params.contents,
-          config: params.config,
+          config: withThinking(model, params.config),
         });
         if (model !== this.activeModel) {
           console.warn(
@@ -335,12 +363,54 @@ export class GeminiProvider implements LlmProvider {
         return await this.client.models.generateContent(params);
       } catch (err) {
         lastErr = err;
+        // `thinkingConfig` is our latency guard, but the lite-tier models have no
+        // thinking to disable and reject the field outright (400 INVALID_ARGUMENT).
+        // It's best-effort — remember this model rejects it (so future requests
+        // skip it entirely), strip it, and retry now rather than failing.
+        const cfg = params.config as Record<string, unknown> | undefined;
+        if (isInvalidArgument(err) && cfg && "thinkingConfig" in cfg) {
+          if (params.model) thinkingUnsupported.add(params.model);
+          const { thinkingConfig: _dropped, ...rest } = cfg;
+          params = { ...params, config: rest };
+          continue;
+        }
         if (i === attempts - 1 || !isTransientError(err)) throw err;
         await new Promise((r) => setTimeout(r, 500 * 2 ** i)); // 0.5s, 1s
       }
     }
     throw lastErr;
   }
+}
+
+/**
+ * Models that rejected an explicit `thinkingConfig` (lite-tier has no thinking to
+ * disable). Per-process, like the quota cooldown map — once a model 400s on the
+ * field we stop sending it, so we don't waste a round-trip probing every request.
+ */
+const thinkingUnsupported = new Set<string>();
+
+/** Add our `thinkingConfig` latency guard to a request config for `model`, unless
+ * that model has already been seen to reject it. Returns a shallow copy. */
+function withThinking(
+  model: string,
+  config: Record<string, unknown>,
+): Record<string, unknown> {
+  if (thinkingUnsupported.has(model)) return config;
+  return {
+    ...config,
+    // 0 disables "thinking" (see GEMINI_THINKING_BUDGET); leaving it on made
+    // single flash-tier calls take 48–73s. -1 opts back into the model default.
+    thinkingConfig: { thinkingBudget: env.GEMINI_THINKING_BUDGET },
+  };
+}
+
+/** A 400 the API raised because the request itself was malformed for this model
+ * (e.g. an unsupported `thinkingConfig`) — as opposed to a transient/quota error. */
+function isInvalidArgument(err: unknown): boolean {
+  const status = (err as { status?: number })?.status;
+  if (status === 400) return true;
+  const msg = err instanceof Error ? err.message : String(err);
+  return /INVALID_ARGUMENT|invalid argument/i.test(msg);
 }
 
 /** Whether an error is a transient network/server blip worth retrying. */

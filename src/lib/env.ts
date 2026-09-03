@@ -17,6 +17,20 @@ const serverSchema = z.object({
     .default("gemini"),
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default("gemini-flash-latest"),
+
+  // "Thinking" token budget for Gemini responses. 0 = DISABLED, -1 = automatic
+  // (model default). A concise customer-support bot needs no extended reasoning,
+  // and thinking-enabled models (the gemini-3 flash tier) otherwise burn tens of
+  // seconds of hidden reasoning per turn. Disabled by default for latency; raise
+  // it if answer quality on complex tool use suffers. Every model in our fallback
+  // chain is flash/flash-lite, which all support disabling.
+  GEMINI_THINKING_BUDGET: z.coerce.number().int().default(0),
+
+  // Perf tracing for the AI response path. When "on" (default) the brain + LLM
+  // provider emit one concise `[perf]` line per message (DB setup vs model vs
+  // persist, per-turn model round-trips, tool time) so real latency can be read
+  // off prod logs without a tracing dependency. Set "off" to silence.
+  AI_PERF_LOG: z.enum(["on", "off"]).default("on"),
   ANTHROPIC_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
 

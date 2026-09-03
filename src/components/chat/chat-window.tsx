@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { Markdown } from "./markdown";
 
 type ChatMessage = {
   id: string;
@@ -245,16 +246,20 @@ function Bubble({
   children: React.ReactNode;
 }) {
   const outbound = role === "user";
+  // Assistant replies may contain Markdown — render it. User text is shown
+  // verbatim (pre-wrap) so we never reinterpret what the visitor typed.
+  const renderMarkdown = !outbound && typeof children === "string";
   return (
     <div className={cn("flex", outbound ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[80%] rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap break-words",
-          outbound ? "text-white" : "bg-muted text-foreground",
+          "max-w-[80%] rounded-2xl px-4 py-2 text-sm break-words",
+          outbound ? "text-white whitespace-pre-wrap" : "bg-muted text-foreground",
+          renderMarkdown ? "" : "whitespace-pre-wrap",
         )}
         style={outbound ? { backgroundColor: themeColor } : undefined}
       >
-        {children}
+        {renderMarkdown ? <Markdown text={children as string} /> : children}
       </div>
     </div>
   );
