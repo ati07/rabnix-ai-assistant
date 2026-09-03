@@ -143,6 +143,7 @@ function renderChannelGuidance(channel: PromptContext["channel"]): string {
   return [
     "# Channel: WhatsApp",
     "You are chatting with the customer over WhatsApp, so you can send them WhatsApp reminders and follow-ups at their number.",
+    "Reply in plain text — WhatsApp does not render Markdown, so never use **, __, #, backticks, or tables (they show up as raw symbols). For emphasis use WhatsApp's own style sparingly (*single asterisks* for bold); for a short list, put each item on its own line with a plain dash.",
   ].join("\n");
 }
 
